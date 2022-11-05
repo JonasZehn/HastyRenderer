@@ -1,0 +1,8 @@
+[wrap-git]
+directory = openexr-v3.1.5
+url = https://github.com/AcademySoftwareFoundation/openexr.git
+revision = v3.1.5
+patch_directory = openexr
+
+[provide]
+openexr = openexr_dep

@@ -1,0 +1,8 @@
+[wrap-git]
+directory = robin_hood-3.11.5
+url = https://github.com/martinus/robin-hood-hashing.git
+revision = 3.11.5
+patch_directory = robin_hood
+
+[provide]
+robin_hood = robin_hood_dep

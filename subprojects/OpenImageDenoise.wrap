@@ -1,0 +1,9 @@
+[wrap-file]
+directory = oidn-1.4.3.x64.vc14.windows
+source_url = https://github.com/OpenImageDenoise/oidn/releases/download/v1.4.3/oidn-1.4.3.x64.vc14.windows.zip
+source_filename = oidn-1.4.3.x64.vc14.windows.zip
+source_hash = 5c0f3d8a4211dfd064f7baeb4403e33cba36035ad8b6c8a8c0cabb7c705db4f4
+patch_directory = OpenImageDenoise
+
+[provide]
+OpenImageDenoise = OpenImageDenoise_dep

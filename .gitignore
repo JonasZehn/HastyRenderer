@@ -1,0 +1,15 @@
+experiments/
+literature/
+subprojects/embree-3.13.5.x64.vc14.windows/
+subprojects/googletest-release-1.11.0/
+subprojects/nlohmann_json-3.10.5/
+subprojects/oidn-1.4.3.x64.vc14.windows/
+subprojects/SDL2-2.24.0/
+subprojects/packagecache/
+subprojects/zlib-1.2.12/
+notebook/
+subprojects/libpng-1.6.37/
+assets/
+subprojects/benchmark-1.7.0/
+output/
+goals/

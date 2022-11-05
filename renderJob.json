@@ -1,0 +1,9 @@
+{
+	"settings":{
+		"num_samples": 1024,
+		"num_threads": 6,
+		"width": 1280,
+		"height": 720
+	},
+	"scene": "assets/prism.json"
+}

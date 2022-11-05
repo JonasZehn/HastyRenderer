@@ -1,0 +1,8 @@
+[wrap-git]
+directory = shishua
+url = https://github.com/espadrine/shishua.git
+revision = ed0d60a8b35fb6aba711dcbc24aaeda78c623b45
+patch_directory = shishua
+
+[provide]
+shishua = shishua_dep

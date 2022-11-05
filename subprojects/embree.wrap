@@ -1,0 +1,9 @@
+[wrap-file]
+directory = embree-3.13.5.x64.vc14.windows
+source_url = https://github.com/embree/embree/releases/download/v3.13.5/embree-3.13.5.x64.vc14.windows.zip
+source_filename = embree-3.13.5.x64.vc14.windows.zip
+source_hash = 0ea932e2d5953c6816490a6c7e384646f7d35c59092286a00abf47cd931b8ac6
+patch_directory = embree
+
+[provide]
+embree = embree_dep
