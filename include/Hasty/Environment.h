@@ -107,12 +107,6 @@ public:
       float theta = ( (y + 0.5f) / heightF) * float(Hasty::Pi);
       return pixel.norm() * std::sin(theta);
       });
-    //std::array<float, 9> kernel = {
-    //  1.0f/16.0f, 2.0f/16.0f, 1.0f/16.0f,
-    //  2.0f/16.0f, 4.0f/16.0f, 2.0f/16.0f,
-    //  1.0f/16.0f, 2.0f/16.0f, 1.0f/16.0f,
-    //};
-    //Image1f imgs = runSmallFilter<3,3>(imgNorm, kernel);
     distribution.precompute(std::move(imgNorm));
 
   }

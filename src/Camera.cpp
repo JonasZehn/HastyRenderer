@@ -20,6 +20,8 @@ void from_json(const nlohmann::json& j, Camera& camera)
   json_get_optional(camera.m_apertureSize, j, "aperture", 0.0f);
   json_get_optional(camera.m_focalDistance, j, "focal_distance", 1.0f);
   json_get_optional(camera.m_exposure, j, "exposure", 0.0f);
+  json_get_optional(camera.m_numBlades, j, "num_blades", int(8));
+  json_get_optional(camera.m_bladeRotation, j, "blade_rotation", 0.0f);
 }
 
 Camera::Camera()
@@ -54,7 +56,7 @@ Ray Camera::ray(RNG &rng, const Vec2f& p, float frameWidth, float frameHeight)
     Vec3f direction = m_forward + m_right * (q * lx) - m_up * (q * ly);
     direction.normalize();
     float density;
-    Vec2f offset = sampleDiskUniformly(rng, &density);
+    Vec2f offset = sampleCircularNGonUniformly(rng, m_numBlades, m_bladeRotation, &density);
     float t = m_focalDistance * direction.dot(m_forward);
     Vec3f focalPoint = m_position + t * direction;
     Vec3f origin = m_position + m_apertureSize * offset[0] * m_up + m_apertureSize * offset[1] * m_right;

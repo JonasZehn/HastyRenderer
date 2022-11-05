@@ -33,6 +33,8 @@ private:
   float m_apertureSize = 0.0f;
   float m_focalDistance = 1.0f;
   float m_exposure = 0.0f;
+  int m_numBlades = 8;
+  float m_bladeRotation = 0.0f;
 };
 
 

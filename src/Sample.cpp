@@ -6,7 +6,39 @@ Vec2f sampleDiskUniformly(RNG& rng, float* pDensity)
 {
   float alpha = rng.uniform01f() * float(2.0 * Hasty::Pi);
   float r = std::sqrt(rng.uniform01f());
+  (*pDensity) = float(Hasty::InvPi);
   return Vec2f(r * std::cos(alpha), r * std::sin(alpha));
+}
+Vec2f sampleCircularNGonUniformly(RNG& rng, int numBlades, float bladeRotation, float* pDensity)
+{
+  assert(bladeRotation >= float(-Hasty::Pi));
+  assert(numBlades >= 3);
+  
+  // do a half plane test with direction of anglePerSector/2
+  float anglePerSector = float(2.0 * Hasty::Pi / numBlades);
+  Vec2f normal(std::cosf(anglePerSector * 0.5f), std::sinf(anglePerSector * 0.5f));
+  float d = -normal[0];  // offset such that (1,0) is on the border of the half plane
+
+  Vec2f sample;
+  bool outside;
+  do
+  {
+    sample = sampleDiskUniformly(rng, pDensity);
+    float r = sample.norm();
+    float angle = std::atan2f(sample[1], sample[0]);
+    angle -= bladeRotation;
+    angle += float(2.0 * Hasty::Pi)* (1.0f + std::numeric_limits<float>::epsilon()); // make sure angle is bigger than zero
+    // now normalize wrt to angular sector:
+    angle = std::fmodf(angle, anglePerSector);
+    Vec2f normalizedPosition(r * std::cosf(angle), r * std::sinf(angle));
+    outside = (normal.dot(normalizedPosition) + d) > 0.0f;
+  } while (outside);
+
+  float areaSector = 0.5 * std::sin(anglePerSector); // Area = 0.5 * radius * radius * sin(anglePerSector)
+  float areaNGon = numBlades * areaSector;
+  (*pDensity) = 1.0 / areaNGon;
+
+  return sample;
 }
 Vec3f sampleSphereSurfaceUniformly(RNG& rng, float* pDensity)
 {

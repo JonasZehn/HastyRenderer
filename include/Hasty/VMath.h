@@ -82,6 +82,18 @@ public:
     m_data[1] += v2[1];
     return *this;
   }
+  float dot(const Vec2f& v2) const
+  {
+    return m_data[0] * v2[0] + m_data[1] * v2[1];
+  }
+  float normSq() const
+  {
+    return this->dot(*this);
+  }
+  float norm() const
+  {
+    return std::sqrtf(this->dot(*this));
+  }
   static Vec2f Constant(float f)
   {
     return Vec2f(f, f);

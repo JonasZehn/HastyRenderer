@@ -7,6 +7,8 @@ namespace Hasty
 {
 
 Vec2f sampleDiskUniformly(RNG& rng, float* pDensity);
+Vec2f sampleCircularNGonUniformly(RNG& rng, int numBlades, float bladeRotation, float* pDensity);
+
 Vec3f sampleSphereSurfaceUniformly(RNG& rng, float* pDensity);
 
 Vec3f sampleHemisphereSurfaceUniformly(RNG& rng, const Vec3f& normal, float* pDensity);

@@ -64,7 +64,7 @@ Currently the input format is quite simple, i.e. it the renderer takes two JSON 
 * [x] Interpolated Normals
 * [x] Depth of Field
 * [x] Environment Map
-* [ ] Bokeh Blades
+* [x] Aperture Blades
 * [ ] Normal Map
 * [ ] Hero Wavelength
 * [ ] Microfacet based Refraction
