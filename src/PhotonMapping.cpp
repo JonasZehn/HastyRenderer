@@ -832,8 +832,6 @@ void renderPhotonThread(Image3fAccDoubleBuffer& colorBuffer, Image3fAccDoubleBuf
 {
   preinitEmbree();
 
-  std::cout << " hello world " << '\n';
-
   Scene& scene = *job.scene;
 
   RNG rng(threadData.seed);

@@ -121,7 +121,7 @@ Image3f readEXR3(const std::filesystem::path& filename)
 void writeEXR(const Image<Vec3f>& image, const std::filesystem::path& filename)
 {
   using namespace Imf_3_1;
-
+  std::cout << " writing exr to " << filename.string() << std::endl;
   Header header(image.getWidth(), image.getHeight());
   header.channels().insert("R", Channel(FLOAT));
   header.channels().insert("G", Channel(FLOAT));

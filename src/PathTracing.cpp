@@ -101,8 +101,6 @@ Vec3f estimateRadiance(RenderContext context, LightRayInfo& lightRay, const Ray&
 
 void renderThread(Image3fAccDoubleBuffer& colorBuffer, Image3fAccDoubleBuffer& normalBuffer, Image3fAccDoubleBuffer& albedoBuffer, RenderJob& job, RenderThreadData& threadData)
 {
-  std::cout << " hello world " << '\n';
-
   Scene& scene = *job.scene;
 
   RNG rng(threadData.seed);

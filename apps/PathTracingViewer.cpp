@@ -24,6 +24,11 @@ int main(int argc, char* argv[])
   }
 
   std::filesystem::path outputFolder = argv[2];
+  if (!std::filesystem::is_directory(outputFolder))
+  {
+    std::cout << "error given output path " << outputFolder << " is not a directory " << std::endl;
+    return 1;
+  }
 
   RenderJob job;
   try
