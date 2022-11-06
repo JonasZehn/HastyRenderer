@@ -3,7 +3,7 @@ call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\VC\Auxiliary
 
 rem https://mesonbuild.com/Builtin-options.html
 set buildtype=debugoptimized
-set builddir=build-%buildtype%
+set builddir=build-meson-%buildtype%
 rem set backend=ninja
 set backend=vs
 

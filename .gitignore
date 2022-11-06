@@ -7,9 +7,15 @@ subprojects/oidn-1.4.3.x64.vc14.windows/
 subprojects/SDL2-2.24.0/
 subprojects/packagecache/
 subprojects/zlib-1.2.12/
-notebook/
 subprojects/libpng-1.6.37/
-assets/
 subprojects/benchmark-1.7.0/
+notebook/
+assets/
 output/
 goals/
+build-cmake-debug/
+build-cmake-relwithdebinfo/
+build-cmake-release/
+build-meson-debug/
+build-meson-debugoptimized/
+build-meson-release/

@@ -81,11 +81,11 @@ executable('PhotonMappingViewer',
 			dependencies: [hr_viewer_dep]
 			)
 
-test_executable = executable('Tests',
+test_executable = executable('HastyTests',
 			'apps/Tests.cpp',
 			dependencies: [hr_dep, gtest_dep])
 test('Tests', test_executable)
 
-benchmarks_executable = executable('Benchmarks',
+benchmarks_executable = executable('HastyBenchmarks',
 			'apps/Benchmarks.cpp',
 			dependencies: [hr_dep,benchmark_dep])

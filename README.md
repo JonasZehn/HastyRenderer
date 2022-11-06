@@ -27,7 +27,7 @@
 
 ## About the project
 
-I'm throwing together this pathtracer to learn more details about path tracing, the [meson](https://mesonbuild.com/) build system and modern C++ features. 
+I'm throwing together this pathtracer to learn more details about path tracing, the [Meson](https://mesonbuild.com/) build system and modern C++ features. 
 This project currently includes a unidirectional path tracer and a stochastic progressive photon mapper.
 [Intel Embree](https://www.embree.org/) is used for tracing rays and [Intel Open Image Denoise](https://www.openimagedenoise.org/) is used for denoising.
 
@@ -36,19 +36,23 @@ This project currently includes a unidirectional path tracer and a stochastic pr
 
 ### Requirements
 * Windows
-* [Meson](https://mesonbuild.com/)
+* [Meson](https://mesonbuild.com/) or [CMake](https://cmake.org/)
 * C++17 Compiler
 
-### Build
+### Build with Meson
 
-There are batch files included to run the necessary build commands which are of the form of
+First, setup the variables in `meson_vars.bat`.
+Then, there are batch files included to run the necessary build commands which are of the form of
 
 ```
 meson setup %builddir% --backend %backend% --buildtype=%buildtype% -DZLIB_INCLUDE_DIR=%ZLIB_INCLUDE_DIR% -DZLIB_LIBRARY=%ZLIB_LIBRARY%
 meson compile -C %builddir%
 
 ```
-Most dependencies are automatically fetched by meson, except for zlib.
+Most dependencies are automatically fetched by Meson, except for zlib. When using CMake, the d
+
+### Build with CMake
+First, setup the variables in `cmake_vars.bat`. Install dependencies using [vcpkg](https://vcpkg.io/) by running the `vcpkg_install_requirements_windows.bat` file. Then run the `cmake_build.bat` file to configure and build the project.
 
 ### Input format
 
@@ -65,12 +69,12 @@ Currently the input format is quite simple, i.e. it the renderer takes two JSON 
 * [x] Depth of Field
 * [x] Environment Map
 * [x] Aperture Blades
+* [x] CMake Build
 * [ ] Normal Map
 * [ ] Hero Wavelength
 * [ ] Microfacet based Refraction
 * [ ] Path Guiding integration
 * [ ] USD
-* [ ] CMake Build
 * [ ] Linux/MacOS Build
 
 ## References
