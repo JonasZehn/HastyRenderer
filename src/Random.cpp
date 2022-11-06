@@ -2,7 +2,10 @@
 
 #ifdef use_shishua
 
+extern "C"
+{
 #include <shishua.h>
+}
 
 namespace Hasty
 {
