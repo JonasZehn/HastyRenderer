@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.24.0)
 include(FetchContent)
 
 project(HastyRenderer VERSION 0.1 LANGUAGES CXX)
+list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
 set (CMAKE_CXX_STANDARD 17)
 
@@ -16,20 +17,8 @@ find_package(SDL2 CONFIG REQUIRED)
 find_package(benchmark CONFIG REQUIRED)
 find_package(GTest CONFIG REQUIRED)
  
-FetchContent_Declare(shishua
-  GIT_REPOSITORY    https://github.com/espadrine/shishua.git
-  GIT_TAG           ed0d60a8b35fb6aba711dcbc24aaeda78c623b45
-)
-FetchContent_MakeAvailable(shishua)
-add_library(libshishua INTERFACE)
-target_include_directories(libshishua INTERFACE ${shishua_SOURCE_DIR})
- 
-FetchContent_Declare(oidn
-  URL      https://github.com/OpenImageDenoise/oidn/releases/download/v1.4.3/oidn-1.4.3.x64.vc14.windows.zip
-  URL_MD5  649626f3043c6bea0319eecc44676461
-)
-FetchContent_MakeAvailable(oidn)
-list(APPEND CMAKE_PREFIX_PATH "${oidn_SOURCE_DIR}/lib/cmake")
+include(AddShishua)
+include(DownloadOpenImageDenoise)
 find_package(OpenImageDenoise CONFIG REQUIRED)
 
  

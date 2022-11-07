@@ -73,7 +73,7 @@ Currently the input format is quite simple, i.e. it the renderer takes two JSON 
 * [ ] Normal Map
 * [ ] Hero Wavelength
 * [ ] Microfacet based Refraction
-* [ ] Path Guiding integration
+* [ ] Path Guiding Integration
 * [ ] USD
 * [ ] Linux/MacOS Build
 
