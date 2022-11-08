@@ -149,7 +149,7 @@ public:
   float uniform01f()
   {
     uint32_t u32 = get4bytes();
-    float result = float(u32 & uint32_t(0x007FFFFF) ) * std::powf(2, -23.f); // this is faster than std::ldexpf(u32, -23), thats so wierd
+    float result = float(u32 & uint32_t(0x007FFFFF) ) * std::pow(2.0f, -23.f); // this is faster than std::ldexpf(u32, -23), thats so wierd
     assert(result < 1.0f);
     return result;
   }

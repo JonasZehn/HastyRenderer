@@ -90,7 +90,7 @@ public:
       float Ni = pixel.N;
       if (Ni + M > 0)
       {
-        pixel.radius *= std::sqrtf((Ni + alpha * M) / (Ni + M));
+        pixel.radius *= std::sqrt((Ni + alpha * M) / (Ni + M));
       }
       pixel.N += alpha * M;
       pixel.Ne += NeInI;

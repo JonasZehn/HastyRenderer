@@ -254,7 +254,7 @@ void tracePhoton(RenderContext context, PhotonMap& photonMap, const Ray& a_ray, 
     throughputThis = throughputThis.cwiseProd(transmittance);
 
     // should we absorb photon:
-    float minQ = 1.0f - std::powf(0.1f, 1.0f / context.renderSettings.maxDepth); // probability roulette after maxdepth, 1.0 - p(r0 | r1 | r2 ..) = 1.0 - p(r_i)^80 = 1.0 - pr^80 = 0.9 , pr^80 =  0.1
+    float minQ = 1.0f - std::pow(0.1f, 1.0f / context.renderSettings.maxDepth); // probability roulette after maxdepth, 1.0 - p(r0 | r1 | r2 ..) = 1.0 - p(r_i)^80 = 1.0 - pr^80 = 0.9 , pr^80 =  0.1
     float rouletteQ = std::max(minQ, 1.0f - throughputThis.norm()); // trying to keep the flux the same....  
     if (context.rng.uniform01f() <= rouletteQ)
     {
@@ -522,7 +522,7 @@ float computeNewRadius(float radius1, int sampleIdx)
   {
     scale *= (j + alpha) / (j + 1.0f);
   }
-  return radius1 * sqrtf(scale);
+  return radius1 * sqrt(scale);
 }
 
 // trying to get cost based estimate

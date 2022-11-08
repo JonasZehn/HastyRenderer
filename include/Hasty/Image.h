@@ -158,10 +158,12 @@ protected:
 };
 
 
+struct templateDummyType {};
+
 template<typename T>
 inline T zero()
 {
-  static_assert(false, "bad");
+  static_assert(!std::is_same<T, templateDummyType>::value, "this function is not supposed to work, see other specializations");
 }
 
 template <>

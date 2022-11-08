@@ -50,7 +50,7 @@ Ray Camera::ray(RNG &rng, const Vec2f& p, float frameWidth, float frameHeight)
     float y = p[1];
     float fovDegree = m_fovDegree;
     float fovRadians = float(Pi) * fovDegree / 180.0f;
-    float q = std::tanf(fovRadians * 0.5f); // fov is defined as angle across both directions thus we have to divide by 2 here
+    float q = std::tan(fovRadians * 0.5f); // fov is defined as angle across both directions thus we have to divide by 2 here
     float lx = (x - 0.5f * frameWidth) / frameWidth * 2.0f;
     float ly = (y - 0.5f * frameHeight) / frameWidth * 2.0f;
     Vec3f direction = m_forward + m_right * (q * lx) - m_up * (q * ly);
@@ -71,7 +71,7 @@ Ray Camera::ray(RNG &rng, const Vec2f& p, float frameWidth, float frameHeight)
     float y = p[1];
     float fovDegree = m_fovDegree;
     float fovRadians = float(Pi) * fovDegree / 180.0f;
-    float q = std::tanf(fovRadians * 0.5f); // fov is defined as angle across both directions thus we have to divide by 2 here
+    float q = std::tan(fovRadians * 0.5f); // fov is defined as angle across both directions thus we have to divide by 2 here
     float lx = (x - 0.5f * frameWidth) / frameWidth * 2.0f;
     float ly = (y - 0.5f * frameHeight) / frameWidth * 2.0f;
     Vec3f origin = m_position;
@@ -86,7 +86,7 @@ float Camera::rayAngle(const Vec2f& p, float frameWidth, float frameHeight)
   float y = p[1];
   float fovDegree = m_fovDegree;
   float fovRadians = float(Pi) * fovDegree / 180.0f;
-  float q = std::tanf(fovRadians * 0.5f); // fov is defined as angle across left to right (not to middle) thus we have to divide by 2 here
+  float q = std::tan(fovRadians * 0.5f); // fov is defined as angle across left to right (not to middle) thus we have to divide by 2 here
   float lx1 = (x + 0.5f - 0.5f * frameWidth) / frameWidth * 2.0f;
   float ly1 = (y + 0.5f - 0.5f * frameHeight) / frameWidth * 2.0f;
   float lx2 = (x - 0.5f - 0.5f * frameWidth) / frameWidth * 2.0f;

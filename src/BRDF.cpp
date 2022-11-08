@@ -21,7 +21,7 @@ bool computeRefractionDirection(const Vec3f& wi, const Vec3f& normal, float inde
     // in this case we get total internal reflection and we can't compute cos_t (going complex)
     return false;
   }
-  float cos_t = std::sqrtf(1.0f - sin_tSq);
+  float cos_t = std::sqrt(1.0f - sin_tSq);
   (*wt) = (-relIOR) * wi + (relIOR * cos_i - cos_t) * normal;
   wt->normalize();
   return true;
@@ -70,10 +70,10 @@ Vec3f sampleDGGX(RNG& rng, const Vec3f& normal, float alpha, const Vec3f& dir1, 
     float xi2 = rng.uniform01f();
 
     float phi = 2.0f * float(Pi) * xi2;
-    float costheta = std::sqrtf((1.0f - xi1) / (xi1 * (alpha * alpha - 1.0f) + 1.0f)); // using double here on purpose due to numerical problems
-    float sintheta = std::sqrtf(1.0f - costheta * costheta);
-    float cosphi = std::cosf(phi);
-    float sinphi = std::sinf(phi); // you cannot use sqrt(1 - cosphi*cosphi) here you are gonna loose the sign
+    float costheta = std::sqrt((1.0f - xi1) / (xi1 * (alpha * alpha - 1.0f) + 1.0f)); // using double here on purpose due to numerical problems
+    float sintheta = std::sqrt(1.0f - costheta * costheta);
+    float cosphi = std::cos(phi);
+    float sinphi = std::sin(phi); // you cannot use sqrt(1 - cosphi*cosphi) here you are gonna loose the sign
     Vec3f rv(sintheta * cosphi, sintheta * sinphi, costheta);
 
     RodriguesRotation<float, Vec3f> rotation(Vec3f(0.0f, 0.0f, 1.0f), normal);
@@ -135,7 +135,7 @@ Vec3f sampleGGXVNDF(Vec3f wOut, float alphaX, float alphaY, float xi1, float xi2
 }
 float SmithIsotropicGGXShadowing(float alpha, float vsq, float vn)
 {
-  float lambda = (std::sqrtf(1.0f + alpha * alpha * (vsq / (vn * vn) - 1.0f)) - 1.0f) * 0.5f;
+  float lambda = (std::sqrt(1.0f + alpha * alpha * (vsq / (vn * vn) - 1.0f)) - 1.0f) * 0.5f;
   return 1.0f / (1.0f + lambda);
 }
 Vec3f sampleGGXVNDFGlobal(RNG& rng, const Vec3f& normal, float alpha, const Vec3f& dir1, float* pDensity)
@@ -486,7 +486,7 @@ MaterialEvalResult PrincipledBRDF::evaluate(const SurfaceInteraction& interactio
 
     float nv = std::abs(normalShading.dot(wo));
     float nl = std::abs(normalShading.dot(wi));
-    float G2 = 2.0f * (nv * nl) / ( 1e-7f +  nv * std::sqrtf(alpha * alpha + (1.0f - alpha * alpha) * nl * nl) + nl * std::sqrt(alpha * alpha + (1.0f - alpha * alpha) * nv * nv));
+    float G2 = 2.0f * (nv * nl) / ( 1e-7f +  nv * std::sqrt(alpha * alpha + (1.0f - alpha * alpha) * nl * nl) + nl * std::sqrt(alpha * alpha + (1.0f - alpha * alpha) * nv * nv));
     if (alpha == 0.0f)
     {
       if (std::abs(std::abs(nh) - 1.0f) < 1e-6f) // D_GGX explodes for alpha= 0 and nh = 1, but we know that the integral of D should be 1, it acts as a dirac distribution, and D is zero when nh != 1

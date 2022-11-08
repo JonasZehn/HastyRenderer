@@ -16,7 +16,7 @@ Vec2f sampleCircularNGonUniformly(RNG& rng, int numBlades, float bladeRotation, 
   
   // do a half plane test with direction of anglePerSector/2
   float anglePerSector = float(2.0 * Hasty::Pi / numBlades);
-  Vec2f normal(std::cosf(anglePerSector * 0.5f), std::sinf(anglePerSector * 0.5f));
+  Vec2f normal(std::cos(anglePerSector * 0.5f), std::sin(anglePerSector * 0.5f));
   float d = -normal[0];  // offset such that (1,0) is on the border of the half plane
 
   Vec2f sample;
@@ -25,12 +25,12 @@ Vec2f sampleCircularNGonUniformly(RNG& rng, int numBlades, float bladeRotation, 
   {
     sample = sampleDiskUniformly(rng, pDensity);
     float r = sample.norm();
-    float angle = std::atan2f(sample[1], sample[0]);
+    float angle = std::atan2(sample[1], sample[0]);
     angle -= bladeRotation;
     angle += float(2.0 * Hasty::Pi)* (1.0f + std::numeric_limits<float>::epsilon()); // make sure angle is bigger than zero
     // now normalize wrt to angular sector:
-    angle = std::fmodf(angle, anglePerSector);
-    Vec2f normalizedPosition(r * std::cosf(angle), r * std::sinf(angle));
+    angle = std::fmod(angle, anglePerSector);
+    Vec2f normalizedPosition(r * std::cos(angle), r * std::sin(angle));
     outside = (normal.dot(normalizedPosition) + d) > 0.0f;
   } while (outside);
 
@@ -49,7 +49,7 @@ Vec3f sampleSphereSurfaceUniformly(RNG& rng, float* pDensity)
     float rsq = r.dot(r);
     if (rsq <= 1.0 && rsq > 1e-6f)
     {
-      return r / std::sqrtf(rsq);
+      return r / std::sqrt(rsq);
     }
   }
   return Vec3f::Zero();
@@ -67,7 +67,7 @@ Vec3f sampleHemisphereSurfaceUniformly(RNG& rng, const Vec3f& normal, float* pDe
     {
       if (r.dot(normal) >= 0.0f)
       {
-        return r / std::sqrtf(rsq);
+        return r / std::sqrt(rsq);
       }
     }
   }
@@ -91,10 +91,10 @@ Vec3f sampleHemisphereCosImportance(RNG& rng, const Vec3f& normal, float* pDensi
     float xi2 = rng.uniform01f();
 
     float phi = 2.0f * float(Pi) * xi2;
-    costheta = std::sqrtf(xi1);
-    float sintheta = std::sqrtf(1.0f - xi1); // std::sqrtf(1.0f - costheta * costheta);
-    float cosphi = std::cosf(phi);
-    float sinphi = std::sinf(phi); // you cannot use sqrt(1 - cosphi*cosphi) here you are gonna loose the sign
+    costheta = std::sqrt(xi1);
+    float sintheta = std::sqrt(1.0f - xi1); // std::sqrt(1.0f - costheta * costheta);
+    float cosphi = std::cos(phi);
+    float sinphi = std::sin(phi); // you cannot use sqrt(1 - cosphi*cosphi) here you are gonna loose the sign
     Vec3f rv(sintheta * cosphi, sintheta * sinphi, costheta);
 
     RodriguesRotation<float, Vec3f> rotation(Vec3f(0.0f, 0.0f, 1.0f), normal);
@@ -131,10 +131,10 @@ Vec3f sampleCosineLobe(RNG& rng, const Vec3f& lobeDirection, float exponent, flo
     float xi2 = rng.uniform01f();
 
     float phi = 2.0f * float(Pi) * xi2;
-    costheta = std::powf(xi1, 1.0f / (exponent + 1.0f));
-    float sintheta = std::sqrtf(1.0f - costheta * costheta);
-    float cosphi = std::cosf(phi);
-    float sinphi = std::sinf(phi); // you cannot use sqrt(1 - cosphi*cosphi) here you are gonna loose the sign
+    costheta = std::pow(xi1, 1.0f / (exponent + 1.0f));
+    float sintheta = std::sqrt(1.0f - costheta * costheta);
+    float cosphi = std::cos(phi);
+    float sinphi = std::sin(phi); // you cannot use sqrt(1 - cosphi*cosphi) here you are gonna loose the sign
     Vec3f rv(sintheta * cosphi, sintheta * sinphi, costheta);
 
     RodriguesRotation<float, Vec3f> rotation(Vec3f(0.0f, 0.0f, 1.0f), lobeDirection);
@@ -143,7 +143,7 @@ Vec3f sampleCosineLobe(RNG& rng, const Vec3f& lobeDirection, float exponent, flo
     costheta = dir.dot(lobeDirection);
   } while (costheta <= 0.0f); // stay clear from numerical mistakes
 
-  (*pDensity) = (exponent + 1.0f) * 0.5f * float(InvPi) * std::powf(costheta, exponent);
+  (*pDensity) = (exponent + 1.0f) * 0.5f * float(InvPi) * std::pow(costheta, exponent);
   return dir;
 }
 
@@ -151,7 +151,7 @@ float evaluateCosineLobePDF(const Vec3f& lobeDirection, float exponent, const Ve
 {
   float cosTheta = lobeDirection.dot(direction);
   if (cosTheta < 0.0f) return 0.0f;
-  return (exponent + 1.0f) * 0.5f * float(InvPi) * std::powf(cosTheta, exponent);
+  return (exponent + 1.0f) * 0.5f * float(InvPi) * std::pow(cosTheta, exponent);
 }
 
 Vec3f sampleTriangleUniformly(RNG& rng)
@@ -168,7 +168,7 @@ Vec3f sampleTriangleUniformly(RNG& rng)
   // d xy / dq = 1/(2 sqrt(q) ) ( s P_3 - P_1)
   // => detjac = p3x / 2 ( s p3y - p1y) - p3y / 2 ( s p3x - p1x) = - p1y p3x / 2   + p1x p3y / 2 
   float s = rng.uniform01f();
-  float t = std::sqrtf(rng.uniform01f());
+  float t = std::sqrt(rng.uniform01f());
   float beta1 = 1.0f - t;
   float beta3 = t * s;
   float beta2 = std::max(0.0f, 1.0f - beta1 - beta3);

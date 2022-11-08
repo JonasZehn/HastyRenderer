@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <mutex>
 #include <filesystem>
+#include <atomic>
 
 namespace Hasty
 {

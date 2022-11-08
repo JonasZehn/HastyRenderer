@@ -2,9 +2,9 @@
 
 #include <nlohmann/json.hpp>
 
+#include <cmath>
 #include <array>
 #include <iostream>
-#include <cmath>
 #include <cassert>
 #include <cstdint>
 
@@ -29,7 +29,7 @@ inline float fmod1p1(float f)
 template<int N>
 constexpr float powci(float f)
 {
-  static_assert(N >= 0, "only support non negative exponents, use powf instead");
+  static_assert(N >= 0, "only support non negative exponents, use pow instead");
   if constexpr (N == 0) return 1.0f;
   else
   {
@@ -92,7 +92,7 @@ public:
   }
   float norm() const
   {
-    return std::sqrtf(this->dot(*this));
+    return std::sqrt(this->dot(*this));
   }
   static Vec2f Constant(float f)
   {
@@ -203,7 +203,7 @@ public:
   }
   float norm() const
   {
-    return std::sqrtf(this->dot(*this));
+    return std::sqrt(this->dot(*this));
   }
   float normL1() const
   {
@@ -239,7 +239,7 @@ public:
   }
   Vec3f cwiseSqrt() const
   {
-    return Vec3f(std::sqrtf(m_data[0]), std::sqrtf(m_data[1]), std::sqrtf(m_data[2]));
+    return Vec3f(std::sqrt(m_data[0]), std::sqrt(m_data[1]), std::sqrt(m_data[2]));
   }
   Vec3f cwisePow(float exponent) const
   {
@@ -527,7 +527,7 @@ public:
 
 inline float pow(float v, float exponent)
 {
-  return std::powf(v, exponent);
+  return std::pow(v, exponent);
 }
 inline Vec3f pow(const Vec3f& v, float exponent)
 {

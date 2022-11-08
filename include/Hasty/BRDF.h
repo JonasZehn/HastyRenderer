@@ -74,7 +74,7 @@ inline float fusedQuartzIndexOfRefraction(float wavelengthMicroMeter)
   float a = 0.6961663f * wavelengthMicroMeterSquare / (wavelengthMicroMeterSquare - 0.0684043f * 0.0684043f);
   float b = 0.4079426f * wavelengthMicroMeterSquare / (wavelengthMicroMeterSquare - 0.1162414f * 0.1162414f);
   float c = 0.8974794f * wavelengthMicroMeterSquare / (wavelengthMicroMeterSquare - 9.896161f * 9.896161f);
-  return std::sqrtf(1.0f + a + b + c);
+  return std::sqrt(1.0f + a + b + c);
 }
 
 // Microfacet Models for Refraction through Rough Surfaces

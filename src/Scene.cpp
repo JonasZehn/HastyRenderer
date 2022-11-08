@@ -92,7 +92,7 @@ Scene::Scene(std::filesystem::path inputfilePath)
       else
       {
         float nSpecular = material.shininess;
-        float roughness = 1.0f - std::sqrtf(nSpecular / 1000.0f); // blender currently uses the formula (1.0 - bsdf_roughness)^2 * 1000
+        float roughness = 1.0f - std::sqrt(nSpecular / 1000.0f); // blender currently uses the formula (1.0 - bsdf_roughness)^2 * 1000
         roughnessTexture = std::make_unique<ConstantTexture1f>(roughness);
       }
 

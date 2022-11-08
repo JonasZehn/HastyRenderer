@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.24.0)
+cmake_minimum_required(VERSION 3.22.0)
 
 include(FetchContent)
 
@@ -16,7 +16,8 @@ find_package(robin_hood CONFIG REQUIRED)
 find_package(SDL2 CONFIG REQUIRED)
 find_package(benchmark CONFIG REQUIRED)
 find_package(GTest CONFIG REQUIRED)
- 
+find_package(TBB CONFIG REQUIRED)
+
 include(AddShishua)
 include(DownloadOpenImageDenoise)
 find_package(OpenImageDenoise CONFIG REQUIRED)

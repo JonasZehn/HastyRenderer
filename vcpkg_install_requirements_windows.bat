@@ -10,3 +10,4 @@ set flags=--triplet %vcpkgtriplet%
 %vcpkgdir%/vcpkg install sdl2 %flags%
 %vcpkgdir%/vcpkg install benchmark %flags%
 %vcpkgdir%/vcpkg install gtest %flags%
+%vcpkgdir%/vcpkg install tbb %flags%

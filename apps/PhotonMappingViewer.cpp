@@ -3,6 +3,7 @@
 #include <Hasty/PhotonMapping.h>
 
 #include <limits>
+#include <thread>
 
 using namespace Hasty;
 
@@ -90,16 +91,25 @@ int main(int argc, char* argv[])
     }
     if (allStopped) break;
 
-    SDL_PollEvent(&event);
-    if (event.type == SDL_QUIT)
+    bool quit = false;
+    while(SDL_PollEvent(&event) != 0)
+    {
+      if(event.type == SDL_QUIT)
+      {
+        quit = true;
+        break;
+      }
+    }
+    if (quit)
     {
       break;
     }
+    
     SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0x00, 0x00);
     SDL_RenderClear(renderer);
 
     computeEstimate(colorBuffers, image);
-    image *= std::powf(2.0f, job.scene->camera.exposure());
+    image *= std::pow(2.0f, job.scene->camera.exposure());
 
     if (image.size() > 0)
     {
@@ -139,7 +149,7 @@ int main(int argc, char* argv[])
   Image3f normalImage, albedoImage;
 
   computeEstimate(colorBuffers, image);
-  image *= std::powf(2.0f, job.scene->camera.exposure());
+  image *= std::pow(2.0f, job.scene->camera.exposure());
   computeEstimate(normalBuffers, normalImage);
   computeEstimate(albedoBuffers, albedoImage);
 

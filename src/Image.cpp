@@ -5,7 +5,7 @@
 #include <ImfInputFile.h>
 #include <ImfOutputFile.h>
 #include <ImfChannelList.h>
-#include <ImfFramebuffer.h>
+#include <ImfFrameBuffer.h>
 #include <ImfBoxAttribute.h>
 
 

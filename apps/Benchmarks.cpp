@@ -31,7 +31,7 @@ static void BM_fmod1p1(benchmark::State& state) {
   float f = fRand(-100.0f, 100.0f);
   for (const auto& _  : state)
   {
-    float result = std::fmodf(std::fmodf(f, 1.0f) + 1.0f, 1.0f);
+    float result = std::fmod(std::fmod(f, 1.0f) + 1.0f, 1.0f);
     benchmark::DoNotOptimize(result);
   }
 }

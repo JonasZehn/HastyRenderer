@@ -35,8 +35,7 @@ This project currently includes a unidirectional path tracer and a stochastic pr
 ## Usage
 
 ### Requirements
-* Windows
-* [Meson](https://mesonbuild.com/) or [CMake](https://cmake.org/)
+* [Meson](https://mesonbuild.com/) (Windows) or [CMake](https://cmake.org/) (Windows, Linux, MacOS)
 * C++17 Compiler
 
 ### Build with Meson
@@ -70,12 +69,12 @@ Currently the input format is quite simple, i.e. it the renderer takes two JSON 
 * [x] Environment Map
 * [x] Aperture Blades
 * [x] CMake Build
+* [x] Linux Build
 * [ ] Normal Map
 * [ ] Hero Wavelength
 * [ ] Microfacet based Refraction
 * [ ] Path Guiding Integration
 * [ ] USD
-* [ ] Linux/MacOS Build
 
 ## References
 

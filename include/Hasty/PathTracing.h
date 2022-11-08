@@ -55,7 +55,7 @@ inline Vec3f beersLaw(const Vec3f& transmittance, float d)
   float invdRef = 1.0f / dRef;
   for (int i = 0; i < 3; i++)
   {
-    result[i] = transmittance[i] <= 0.0f ? 0.0f : std::powf(transmittance[i], invdRef * d); //  std::exp(std::logf(transmittance[i]) * (invdRef * d))
+    result[i] = transmittance[i] <= 0.0f ? 0.0f : std::pow(transmittance[i], invdRef * d); //  std::exp(std::logf(transmittance[i]) * (invdRef * d))
   }
   assertFinite(result);
   return result;
