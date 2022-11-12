@@ -117,11 +117,11 @@ Scene::Scene(std::filesystem::path inputfilePath)
 
   std::vector<float> lightAreas;
 
-  // Loop over shapes
   for (size_t s = 0; s < shapes.size(); s++)
   {
     auto& shape = shapes[s];
 
+    //create embree geometry
     RTCGeometry geom = rtcNewGeometry(m_device, RTC_GEOMETRY_TYPE_TRIANGLE);
     float* vertexBuffer = (float*)rtcSetNewGeometryBuffer(geom,
       RTC_BUFFER_TYPE_VERTEX, 0, RTC_FORMAT_FLOAT3, 3 * sizeof(float), attrib.vertices.size() / 3); // instead of remapping vertices we just  copy vertex buffer for each subobject for now
@@ -135,7 +135,6 @@ Scene::Scene(std::filesystem::path inputfilePath)
       vertexBuffer[vertexIndex] = attrib.vertices[vertexIndex];
     }
 
-    // Loop over faces(polygon)
     size_t index_offset = 0;
     for (size_t f = 0; f < numFaces; f++)
     {
@@ -146,16 +145,16 @@ Scene::Scene(std::filesystem::path inputfilePath)
       }
 
       // Loop over vertices in the face.
+      // fill embree index buffer
       for (size_t v = 0; v < fv; v++)
       {
         tinyobj::index_t idx = shape.mesh.indices[index_offset + v];
 
         indexBuffer[index_offset + v] = idx.vertex_index;
-
       }
-      index_offset += fv;
 
 
+      // construct light information
       int materialId = shape.mesh.material_ids[f];
       if (materialId == -1)
       {
@@ -178,8 +177,9 @@ Scene::Scene(std::filesystem::path inputfilePath)
 
         lightAreas.emplace_back(area);
       }
+      
+      index_offset += fv;
     }
-
 
     rtcCommitGeometry(geom);
     rtcAttachGeometry(m_embreeScene, geom);
@@ -212,31 +212,10 @@ SurfaceInteraction Scene::getInteraction(unsigned int geomID, unsigned int primI
   interaction.x = barycentricCoordinates[0] * xv[0] + barycentricCoordinates[1] * xv[1] + barycentricCoordinates[2] * xv[2];
   interaction.normalGeometric = geomNormal;
 
-  {
-    bool failed = false;
-    Vec2f uv = Vec2f::Zero();
-    for (int v = 0; v < 3; v++)
-    {
-      tinyobj::index_t idx = shapes[geomID].mesh.indices[3 * primID + v];
-      if (2 * size_t(idx.texcoord_index) + 1 >= attrib.texcoords.size())
-      {
-        failed = true;
-        break;
-      }
-      Vec2f uv_j(attrib.texcoords[2 * size_t(idx.texcoord_index) + 0], attrib.texcoords[2 * size_t(idx.texcoord_index) + 1]);
-
-      uv += uv_j * barycentricCoordinates[v];
-    }
-    if (!failed)
-    {
-      interaction.uv = uv;
-    }
-  }
-
   interaction.materialId = shapes[geomID].mesh.material_ids[primID];
-
-  bool interpolateNormals = shapes[geomID].mesh.smoothing_group_ids[primID] != 0;
-  if (interpolateNormals)
+  
+  bool smoothNormalTangents = shapes[geomID].mesh.smoothing_group_ids[primID] != 0;
+  if (smoothNormalTangents)
   {
     std::array<Vec3f, 3> nv = collectTriangleNormals(geomID, primID);
 
@@ -257,6 +236,13 @@ SurfaceInteraction Scene::getInteraction(unsigned int geomID, unsigned int primI
   {
     interaction.normalShadingDefault = interaction.normalGeometric;
     interaction.h = 0.0f;
+  }
+  
+  std::optional< std::array<Vec2f, 3> > uvOptional = collectTriangleUV(reader, geomID, primID);
+  if (uvOptional.has_value())
+  {
+    std::array<Vec2f, 3>& uv = uvOptional.value();
+    interaction.uv = uv[0] * barycentricCoordinates[0] + uv[1] * barycentricCoordinates[1] + uv[2] * barycentricCoordinates[2];
   }
 
 
@@ -346,10 +332,10 @@ float Scene::getIORInside(const RayHit& rayhit, int wavelength)
   return Scene::getBXDF(rayhit.interaction).getIndexOfRefraction(wavelength);
 }
 
-const tinyobj::material_t& Scene::getMaterial(unsigned int geomId, unsigned int primId) const
+const tinyobj::material_t& Scene::getMaterial(unsigned int geomID, unsigned int primID) const
 {
   const std::vector<tinyobj::shape_t>& shapes = reader.GetShapes();
-  int materialId = shapes[geomId].mesh.material_ids[primId];
+  int materialId = shapes[geomID].mesh.material_ids[primID];
   const std::vector<tinyobj::material_t>& materials = reader.GetMaterials();
   return materials[materialId];
 }
@@ -359,9 +345,17 @@ const tinyobj::material_t& Scene::getMaterial(const RayHit& hit) const
   return materials[hit.interaction.materialId];
 }
 
-Vec3f Scene::getEmissionRadiance(const Vec3f& wo, unsigned int geomId, unsigned int primId) const
+std::array<Vec3f, 3> Scene::collectTriangle(std::size_t geomID, std::size_t primID) const
 {
-  auto& material = getMaterial(geomId, primId);
+  return Hasty::collectTriangle(reader, geomID, primID);
+}
+std::array<Vec3f, 3> Scene::collectTriangleNormals(std::size_t geomID, std::size_t primID) const
+{
+  return Hasty::collectTriangleNormals(reader, geomID, primID);
+}
+Vec3f Scene::getEmissionRadiance(const Vec3f& wo, unsigned int geomID, unsigned int primID) const
+{
+  auto& material = getMaterial(geomID, primID);
   Vec3f materialEmission(material.emission[0], material.emission[1], material.emission[2]);
   // materialEmission is in W / A, irradiance, whereas this function returns radiance
   // to derive it i will resort to are formulation: integrate over hemisphere with radius r:
@@ -405,58 +399,6 @@ bool Scene::isInfiniteAreaLight(const RayHit& hit) const
   return !hasHitSurface(hit);
 }
 
-std::array<Vec3f, 3> Scene::collectTriangle(std::size_t geomID, std::size_t primID) const
-{
-  std::array<Vec3f, 3> p;
-
-  const tinyobj::attrib_t& attrib = reader.GetAttrib();
-  const std::vector<tinyobj::shape_t>& shapes = reader.GetShapes();
-
-  std::array<std::size_t, 3> idcs = {
-    shapes[geomID].mesh.indices[3 * primID + 0].vertex_index,
-    shapes[geomID].mesh.indices[3 * primID + 1].vertex_index,
-    shapes[geomID].mesh.indices[3 * primID + 2].vertex_index
-  };
-  for (int v = 0; v < 3; v++)
-  {
-    tinyobj::real_t vx = attrib.vertices[3 * size_t(idcs[v]) + 0];
-    tinyobj::real_t vy = attrib.vertices[3 * size_t(idcs[v]) + 1];
-    tinyobj::real_t vz = attrib.vertices[3 * size_t(idcs[v]) + 2];
-    p[v] = Vec3f(vx, vy, vz);
-  }
-
-  return p;
-}
-std::array<Vec3f, 3> Scene::collectTriangleNormals(std::size_t geomID, std::size_t primID) const
-{
-  std::array<Vec3f, 3> vertexNormals;
-  const tinyobj::attrib_t& attrib = reader.GetAttrib();
-  const std::vector<tinyobj::shape_t>& shapes = reader.GetShapes();
-
-  for (int v = 0; v < 3; v++)
-  {
-    tinyobj::index_t idx = shapes[geomID].mesh.indices[3 * primID + v];
-    if (idx.normal_index >= 0)
-    {
-      tinyobj::real_t nx = attrib.normals[3 * size_t(idx.normal_index) + 0];
-      tinyobj::real_t ny = attrib.normals[3 * size_t(idx.normal_index) + 1];
-      tinyobj::real_t nz = attrib.normals[3 * size_t(idx.normal_index) + 2];
-      vertexNormals[v] = Vec3f(nx, ny, nz);
-    }
-    else
-    {
-      //failed = true;
-      std::array<Vec3f, 3> p = collectTriangle(geomID, primID);
-      Vec3f n = (p[1] - p[0]).cross(p[2] - p[0]).normalized();
-      for (int k = 0; k < 3; k++)
-      {
-        vertexNormals[k] = n;
-      }
-      break;
-    }
-  }
-  return vertexNormals;
-}
 SurfaceInteraction Scene::sampleSurfaceLightPosition(RNG& rng, float* pDensity)
 {
   if (lightTriangles.size() == 0)
@@ -468,15 +410,15 @@ SurfaceInteraction Scene::sampleSurfaceLightPosition(RNG& rng, float* pDensity)
 
   unsigned int triangleIdx = (*lightDistribution)(rng);
   std::array<std::size_t, 2> ids = lightTriangles[triangleIdx];
-  unsigned int geomId = ids[0];
-  unsigned int primId = ids[1];
+  unsigned int geomID = ids[0];
+  unsigned int primID = ids[1];
 
   std::array<Vec3f, 3> p = collectTriangle(ids[0], ids[1]);
 
   Vec3f normal = (p[1] - p[0]).cross(p[2] - p[0]).normalized();
 
   Vec3f barycentricCoordinates = sampleTriangleUniformly(rng);
-  return getInteraction(geomId, primId, barycentricCoordinates, normal);
+  return getInteraction(geomID, primID, barycentricCoordinates, normal);
 }
 Ray Scene::sampleLightRay(RNG& rng, Vec3f* flux)
 {

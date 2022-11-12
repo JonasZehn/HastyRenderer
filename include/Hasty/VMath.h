@@ -72,6 +72,10 @@ public:
   {
     return Vec2f(m_data[0] + v2[0], m_data[1] + v2[1]);
   }
+  Vec2f operator-(const Vec2f& v2) const
+  {
+    return Vec2f(m_data[0] - v2[0], m_data[1] - v2[1]);
+  }
   Vec2f operator*(float f) const
   {
     return Vec2f(m_data[0] * f, m_data[1] * f);
@@ -396,6 +400,54 @@ inline void assertFinite(const Vec3f &v)
 inline void assertFinite(float v)
 {
   assert(std::isfinite(v));
+}
+
+// col major
+class Mat2f
+{
+public:
+  Mat2f()
+  {
+    m_data[0] = std::numeric_limits<float>::signaling_NaN();
+    m_data[1] = std::numeric_limits<float>::signaling_NaN();
+    m_data[2] = std::numeric_limits<float>::signaling_NaN();
+    m_data[3] = std::numeric_limits<float>::signaling_NaN();
+  }
+  Mat2f(const Vec2f& col1, const Vec2f& col2)
+  {
+    this->operator()(0, 0) = col1[0];
+    this->operator()(1, 0) = col1[1];
+    this->operator()(0, 1) = col2[0];
+    this->operator()(1, 1) = col2[1];
+  }
+
+  Mat2f inverse() const
+  {
+    Mat2f result;
+    float d = this->operator()(0, 0) * this->operator()(1, 1) - this->operator()(0, 1) * this->operator()(1, 0);
+    result(0, 0) = this->operator()(1, 1) / d;
+    result(0, 1) = -this->operator()(0, 1) / d;
+    result(1, 0) = -this->operator()(1, 0) / d;
+    result(1, 1) = this->operator()(0, 0) / d;
+    return result;
+  }
+  
+  float& operator()(int i, int j)
+  {
+    return m_data[i + 2 * j];
+  }
+  float operator()(int i, int j) const
+  {
+    return m_data[i + 2 * j];
+  }
+
+private:
+  std::array<float, 4> m_data;
+};
+
+inline Vec3f orthonormalize(const Vec3f& v1Normalized, const Vec3f& v2)
+{
+  return (v2 - v2.dot(v1Normalized) * v1Normalized).normalized();
 }
 
 template<class ScalarType, class VectorType>

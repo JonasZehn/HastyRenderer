@@ -5,8 +5,8 @@
 #include <Hasty/Random.h>
 #include <Hasty/BRDF.h>
 #include <Hasty/Environment.h>
+#include <Hasty/tinyobj.h>
 
-#include <tiny_obj_loader.h>
 #include <embree3/rtcore.h>
 
 #include <memory>
@@ -77,10 +77,10 @@ public:
   bool hasBRDFDiffuseLobe(const RayHit& rayhit);
   float getIORInside(const RayHit& rayhit, int wavelength);
 protected:
-  const tinyobj::material_t& getMaterial(unsigned int geomId, unsigned int primId) const;
+  const tinyobj::material_t& getMaterial(unsigned int geomID, unsigned int primID) const;
   const tinyobj::material_t& getMaterial(const RayHit& hit) const;
 public:
-  Vec3f getEmissionRadiance(const Vec3f& wo, unsigned int geomId, unsigned int primId) const;
+  Vec3f getEmissionRadiance(const Vec3f& wo, unsigned int geomID, unsigned int primID) const;
   Vec3f getEmissionRadiance(const Vec3f& wo, const RayHit& hit) const;
   Vec3f getAlbedo(const SurfaceInteraction& interaction) const;
   Vec3f evalEnvironment(const Ray& ray);

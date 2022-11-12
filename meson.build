@@ -42,6 +42,7 @@ lib_src_files = [
 	header_folder / 'SmallVector.h',
 	header_folder / 'Timer.h',
 	header_folder / 'Texture.h', 'src/Texture.cpp',
+	header_folder / 'tinyobj.h', 'src/tinyobj.cpp',
 	header_folder / 'VMath.h', 'src/VMath.cpp']
 hr_lib = static_library('HastyRenderer',
 					lib_src_files,
