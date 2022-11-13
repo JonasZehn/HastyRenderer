@@ -3,7 +3,7 @@
 
 # Hasty Renderer
 
-![Hasty teaser](images/teaser.jpg)
+![Hasty teaser](images/teaser.png)
 
 
 <!-- PROJECT LOGO -->
