@@ -73,6 +73,11 @@ Scene::Scene(std::filesystem::path inputfilePath)
     }
     else
     {
+      std::unique_ptr<ITextureMap3f> normalMap;
+      if (material.bump_texname != "") // currently blender exports normal map with "bump" as key ...
+      {
+        normalMap = Texture3f::loadTexture((sceneFolder / material.bump_texname).string(), ColorSpace::Linear);
+      }
       
       std::unique_ptr<ITextureMap3f> albedoTexture;
       if (material.diffuse_texname != "")
@@ -111,7 +116,7 @@ Scene::Scene(std::filesystem::path inputfilePath)
         metallicTexture = std::make_unique<ConstantTexture1f>(metallic);
       }
 
-      m_brdfs.emplace_back(std::make_unique<PrincipledBRDF>(std::move(albedoTexture), std::move(roughnessTexture) , std::move(metallicTexture), material.specular[0], material.ior));
+      m_brdfs.emplace_back(std::make_unique<PrincipledBRDF>(std::move(albedoTexture), std::move(roughnessTexture) , std::move(metallicTexture), material.specular[0], material.ior, std::move(normalMap)));
     }
   }
 
@@ -243,6 +248,11 @@ SurfaceInteraction Scene::getInteraction(unsigned int geomID, unsigned int primI
   {
     std::array<Vec2f, 3>& uv = uvOptional.value();
     interaction.uv = uv[0] * barycentricCoordinates[0] + uv[1] * barycentricCoordinates[1] + uv[2] * barycentricCoordinates[2];
+    Vec3f dpdu, dpdv;
+    computeUVMapTriangleDerivative(xv, uv, dpdu, dpdv);
+    interaction.tangent = dpdu.normalized();
+    interaction.bitangent = dpdv.normalized();
+    orthonormalize(interaction.tangent, interaction.bitangent);
   }
 
 

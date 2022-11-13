@@ -25,6 +25,8 @@ struct SurfaceInteraction
   Vec3f x;
   Vec3f normalGeometric;
   Vec3f normalShadingDefault;
+  Vec3f tangent;
+  Vec3f bitangent;
   int32_t materialId;
   std::optional<Vec2f> uv;
   Vec3f barycentricCoordinates;

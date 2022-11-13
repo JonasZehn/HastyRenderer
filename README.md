@@ -66,11 +66,11 @@ Currently the input format is quite simple, i.e. it the renderer takes two JSON 
 * [x] Basic Textures
 * [x] Interpolated Normals
 * [x] Depth of Field
-* [x] Environment Map
+* [x] Environment Mapping
 * [x] Aperture Blades
 * [x] CMake Build
 * [x] Linux Build
-* [ ] Normal Map
+* [x] Normal Mapping
 * [ ] Hero Wavelength
 * [ ] Microfacet based Refraction
 * [ ] Path Guiding Integration

@@ -38,13 +38,10 @@ public:
   RenderSettings& renderSettings;
 };
 
-inline void checkSelfIntersection(const RayHit& rayhit, const RayHit& rayhit2)
+inline bool isSelfIntersection(const RayHit& rayhit, const RayHit& rayhit2)
 {
-  if (rayhit.rtc.hit.geomID == rayhit2.rtc.hit.geomID &&
-    rayhit.rtc.hit.primID == rayhit2.rtc.hit.primID)
-  {
-    std::cout << "Warning: detected self intersection\n";
-  }
+  return rayhit.rtc.hit.geomID == rayhit2.rtc.hit.geomID &&
+    rayhit.rtc.hit.primID == rayhit2.rtc.hit.primID;
 }
 inline Vec3f beersLaw(const Vec3f& transmittance, float d)
 {

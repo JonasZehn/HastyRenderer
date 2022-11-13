@@ -13,6 +13,18 @@ namespace Hasty
 class RayHit;
 struct SurfaceInteraction;
 
+inline void computeUVMapTriangleDerivative(const std::array<Vec3f, 3> &xv, const std::array<Vec2f, 3> &uv, Vec3f &dpdu, Vec3f &dpdv)
+{
+  // tangent ~= \partial p / \partial u
+  // \partial p / \partial beta = d/dbeta ( P * [1 - beta[0] - beta[1]; beta[0]; beta[1]]) = [P[1] - P[0], P[2] - P[0]]
+  // duv/dbeta = d/dbeta ( UV * [1 - beta[0] - beta[1]; beta[0]; beta[1]] ) = [ UV[1] - UV[0]; UV[2] - UV[0] ]
+  // [tangent, bitangent] = dpdu = dpdbeta * dbetadu 
+  Mat2f duvdbeta(uv[1] - uv[0], uv[2] - uv[0]);
+  Mat2f dbetaduv = duvdbeta.inverse();
+  dpdu = (xv[1] - xv[0]) * dbetaduv(0, 0) + (xv[2] - xv[0]) * dbetaduv(1, 0);
+  dpdv = (xv[1] - xv[0]) * dbetaduv(0, 1) + (xv[2] - xv[0]) * dbetaduv(1, 1);
+}
+
 template<typename ResultType>
 class ITextureMap
 {

@@ -65,9 +65,7 @@ Vec3f estimateRadiance(RenderContext context, LightRayInfo& lightRay, const Ray&
       Vec3f throughput2 = throughput.cwiseProd(sampleResult.throughput());
       lightRay2.applyWavelength(throughput2);
 
-      if (throughput2 == Vec3f::Zero()) continue;
-
-      checkSelfIntersection(rayhit, sampleResult.rayhit);
+      if (throughput2 == Vec3f::Zero() || isSelfIntersection(rayhit, sampleResult.rayhit)) continue;
 
       for (int j = 0; j < numStrategies; j++)
       {

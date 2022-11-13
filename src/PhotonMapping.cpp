@@ -245,8 +245,7 @@ void tracePhoton(RenderContext context, PhotonMap& photonMap, const Ray& a_ray, 
     Ray ray2 = context.scene.constructRay(rayhit.interaction, direction2, outside);
     RayHit rayhit2;
     context.scene.rayHit(ray2, &rayhit2);
-    checkSelfIntersection(rayhit, rayhit2);
-    if (!hasHitSurface(rayhit2)) break;
+    if (!hasHitSurface(rayhit2) || isSelfIntersection(rayhit, rayhit2)) break;
 
     //beer's law; moving from hit.x to hit2.x;
     lightRay.updateMedia(context, rayhit, direction2);
@@ -380,9 +379,10 @@ GatherPhotonsResult gatherPhotons(RenderContext context, PhotonMap& photonMap, c
     Ray ray2 = context.scene.constructRay(rayhit.interaction, direction2, outside);
     RayHit rayhit2;
     context.scene.rayHit(ray2, &rayhit2);
-    checkSelfIntersection(rayhit, rayhit2);
 
     lightRay.updateMedia(context, rayhit, ray2.direction());
+
+    if (isSelfIntersection(rayhit, rayhit2)) break;
 
     if (!hasHitSurface(rayhit2))
     {
@@ -470,9 +470,7 @@ PathTraceWithCausticsMapResult pathTraceWithCausticsMap(RenderContext context, P
 
       pdfs[strategy] = sampleResult.pdfOmega;
 
-      if (sampleResult.throughput() == Vec3f::Zero()) continue;
-
-      checkSelfIntersection(rayhit, sampleResult.rayhit);
+      if (sampleResult.throughput() == Vec3f::Zero() || isSelfIntersection(rayhit, sampleResult.rayhit)) continue;
 
       for (int j = 0; j < numStrategies; j++)
       {
@@ -632,8 +630,8 @@ float computeRadiusPixelFootPrint(RenderContext context, float defaultR, int i, 
       Ray ray2 = context.scene.constructRay(rayhit.interaction, direction2, outside);
       RayHit rayhit2;
       context.scene.rayHit(ray2, &rayhit2);
-      checkSelfIntersection(rayhit, rayhit2);
-      if (!hasHitSurface(rayhit2))
+      
+      if (!hasHitSurface(rayhit2) || isSelfIntersection(rayhit, rayhit2))
       {
         return defaultR;
       }

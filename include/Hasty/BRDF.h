@@ -108,7 +108,7 @@ class PrincipledBRDF final : public BXDF
 {
 public:
 
-  PrincipledBRDF(std::unique_ptr<ITextureMap3f> albedo, std::unique_ptr<ITextureMap1f> roughness, std::unique_ptr<ITextureMap1f> metallic, float specular, float indexOfRefraction);
+  PrincipledBRDF(std::unique_ptr<ITextureMap3f> albedo, std::unique_ptr<ITextureMap1f> roughness, std::unique_ptr<ITextureMap1f> metallic, float specular, float indexOfRefraction, std::unique_ptr<ITextureMap3f> normalMap);
   ~PrincipledBRDF();
 
   float getIndexOfRefraction(int wavelength) const { return 1.0f; }
@@ -128,6 +128,7 @@ private:
   std::unique_ptr<ITextureMap1f> metallic;
   float specular;
   float IOR;
+  std::unique_ptr<ITextureMap3f> normalMap;
 };
 
 }
