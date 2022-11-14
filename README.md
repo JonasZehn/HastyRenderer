@@ -39,20 +39,10 @@ This project currently includes a unidirectional path tracer and a stochastic pr
 * [vcpkg](https://vcpkg.io/en/getting-started.html)
 * C++17 Compiler
 
-### Build with Meson
-
-First, setup the variables in `meson_vars.bat`.
-Then, there are batch files included to run the necessary build commands which are of the form of
-
-```
-meson setup %builddir% --backend %backend% --buildtype=%buildtype% -DZLIB_INCLUDE_DIR=%ZLIB_INCLUDE_DIR% -DZLIB_LIBRARY=%ZLIB_LIBRARY%
-meson compile -C %builddir%
-
-```
-Most dependencies are automatically fetched by Meson, except for zlib. When using CMake, the d
-
 ### Build with CMake
-First, setup the variables in `cmake_vars.bat`. Install dependencies using [vcpkg](https://vcpkg.io/) by running the `vcpkg_install_requirements_windows.bat` file. Then run the `cmake_build.bat` file to configure and build the project.
+First, edit the `cmake_vars.bat` file to setup the environment.
+Install the dependencies using [vcpkg](https://vcpkg.io/) by running the `vcpkg_install_requirements_windows.bat` file.
+Then run the `cmake_build.bat` file to configure and build the project.
 
 ### Input format
 
