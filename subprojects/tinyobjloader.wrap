@@ -1,8 +1,0 @@
-[wrap-git]
-directory = tinyobjloader-v2.0.0rc9
-url = https://github.com/tinyobjloader/tinyobjloader.git
-revision = v2.0.0rc9
-patch_directory = tinyobjloader
-
-[provide]
-tinyobjloader = tinyobjloader_dep

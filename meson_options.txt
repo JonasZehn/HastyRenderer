@@ -1,2 +1,0 @@
-option('ZLIB_INCLUDE_DIR', type: 'string', value: '')
-option('ZLIB_LIBRARY', type: 'string', value: '')

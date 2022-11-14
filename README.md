@@ -27,7 +27,7 @@
 
 ## About the project
 
-I'm throwing together this pathtracer to learn more details about path tracing, the [Meson](https://mesonbuild.com/) build system and modern C++ features. 
+I'm throwing together this pathtracer to learn more details about path tracing, the [Meson](https://mesonbuild.com/) build system, vcpkg and modern C++ features. The project fulfilled these goals, and now meson support has been discontinued due to the associated cost of upkeep.
 This project currently includes a unidirectional path tracer and a stochastic progressive photon mapper, both only have CPU implementations for now.
 [Intel Embree](https://www.embree.org/) is used for tracing rays and [Intel Open Image Denoise](https://www.openimagedenoise.org/) is used for denoising.
 
@@ -35,7 +35,8 @@ This project currently includes a unidirectional path tracer and a stochastic pr
 ## Usage
 
 ### Requirements
-* [Meson](https://mesonbuild.com/) (Windows) or [CMake](https://cmake.org/) (Windows, Linux, MacOS)
+* [CMake](https://cmake.org/) 3.22
+* [vcpkg](https://vcpkg.io/en/getting-started.html)
 * C++17 Compiler
 
 ### Build with Meson
