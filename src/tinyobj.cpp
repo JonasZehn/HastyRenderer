@@ -11,7 +11,7 @@ std::array<Vec3f, 3> collectTriangle(const tinyobj::ObjReader &reader, std::size
   const tinyobj::attrib_t& attrib = reader.GetAttrib();
   const std::vector<tinyobj::shape_t>& shapes = reader.GetShapes();
 
-  std::array<std::size_t, 3> idcs = {
+  std::array<int, 3> idcs = {
     shapes[geomID].mesh.indices[3 * primID + 0].vertex_index,
     shapes[geomID].mesh.indices[3 * primID + 1].vertex_index,
     shapes[geomID].mesh.indices[3 * primID + 2].vertex_index

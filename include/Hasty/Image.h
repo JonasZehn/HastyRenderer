@@ -256,10 +256,9 @@ Image3f get3channelsFlipUpDown(const Image4f& image);
 Image3f flipUpDown(const Image3f& image);
 void writePFM(const Image1f& image, const std::filesystem::path& filename);
 void writePFM(const Image3f& image, const std::filesystem::path& filename);
-Image3f readEXR3(const std::filesystem::path& filename);
+Image1f readImage1f(const std::filesystem::path& filename);
+Image3f readImage3f(const std::filesystem::path& filename);
 void writeEXR(const Image<Vec3f>& image, const std::filesystem::path& filename);
-Image1f readPNG1(const std::filesystem::path& filename);
-Image3f readPNG3(const std::filesystem::path& filename);
 
 template<typename C>
 void swap(Image<C>& i1, Image<C>& i2)

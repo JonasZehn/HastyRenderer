@@ -1,15 +1,6 @@
 #include <Hasty/Image.h>
 
-#include <ImfHeader.h>
-#include <ImfRgbaFile.h>
-#include <ImfInputFile.h>
-#include <ImfOutputFile.h>
-#include <ImfChannelList.h>
-#include <ImfFrameBuffer.h>
-#include <ImfBoxAttribute.h>
-
-
-#include <png.h>
+#include <OpenImageIO/imageio.h>
 
 namespace Hasty
 {
@@ -96,153 +87,84 @@ void writePFM(const Image3f& image, const std::filesystem::path& filename)
 
   fclose(filestream);
 }
-Image3f readEXR3(const std::filesystem::path& filename)
+Image1f readImage1f(const std::filesystem::path& filename)
 {
-  using namespace Imf_3_1;
-  using namespace Imath;
-
-  Image<Vec3f> image;
-
-  InputFile file (filename.string().c_str());
-  Box2i dw = file.header().dataWindow();
-  uint32_t width = dw.max.x - dw.min.x + 1;
-  uint32_t height = dw.max.y - dw.min.y + 1;
-  image.resize(width, height);
+  auto inp = OIIO::ImageInput::open(filename);
+  if (!inp)
+  {
+    throw std::runtime_error("could not open file " + filename.string() + " for reading");
+  }
+  const OIIO::ImageSpec &spec = inp->spec();
+  int width = spec.width;
+  int height = spec.height;
+  int numChannels = spec.nchannels;
+  if (numChannels != 1)
+  {
+    throw std::runtime_error("could not read " + filename.string() + ", wrong number of channels, expected 1, found " + std::to_string(numChannels));
+  }
   
-  Imf_3_1::FrameBuffer frameBuffer;
-  frameBuffer.insert("R", Slice(FLOAT, (char*)image.data(), sizeof(Vec3f), sizeof(Vec3f) * image.getWidth()));
-  frameBuffer.insert("G", Slice(FLOAT, ((char*)image.data()) + sizeof(float) * 1, sizeof(Vec3f), sizeof(Vec3f) * image.getWidth()));
-  frameBuffer.insert("B", Slice(FLOAT, ((char*)image.data()) + sizeof(float) * 2, sizeof(Vec3f), sizeof(Vec3f) * image.getWidth()));
+  Image1f image;
+  image.resize(width, height);
+  bool success = inp->read_image(OIIO::TypeDesc::FLOAT, image.data());
+  if (!success)
+  {
+    throw std::runtime_error("failed to read " + filename.string() );
+  }
+  
+  inp->close();
 
-  file.setFrameBuffer (frameBuffer);
-  file.readPixels (dw.min.y, dw.max.y);
+  return image;
+}
+Image3f readImage3f(const std::filesystem::path& filename)
+{
+  auto inp = OIIO::ImageInput::open(filename);
+  if (!inp)
+  {
+    throw std::runtime_error("could not open file " + filename.string() + " for reading");
+  }
+  const OIIO::ImageSpec &spec = inp->spec();
+  int width = spec.width;
+  int height = spec.height;
+  int numChannels = spec.nchannels;
+  if (numChannels != 3 && numChannels != 4)
+  {
+    throw std::runtime_error("could not read " + filename.string() + ", wrong number of channels, expected 3 or 4, found " + std::to_string(numChannels));
+  }
+
+  std::vector<float> pixels(width * height * numChannels);
+  bool success = inp->read_image(OIIO::TypeDesc::FLOAT, pixels.data());
+  if (!success)
+  {
+    throw std::runtime_error("failed to read " + filename.string() );
+  }
+  
+  Image3f image;
+  image.resize(width, height);
+  inp->close();
+  
+  for (uint32_t y = 0; y < height; y++)
+  {
+    for (uint32_t x = 0; x < width; x++)
+    {
+      std::size_t offset = width * numChannels * y + numChannels * x;
+      image(x, y) = Vec3f(pixels[offset + 0], pixels[offset + 1], pixels[offset + 2]);
+    }
+  }
+
   return image;
 }
 void writeEXR(const Image<Vec3f>& image, const std::filesystem::path& filename)
 {
-  using namespace Imf_3_1;
-  std::cout << " writing exr to " << filename.string() << std::endl;
-  Header header(image.getWidth(), image.getHeight());
-  header.channels().insert("R", Channel(FLOAT));
-  header.channels().insert("G", Channel(FLOAT));
-  header.channels().insert("B", Channel(FLOAT));
-  Imf_3_1::OutputFile file(filename.string().c_str(), header);
-  Imf_3_1::FrameBuffer frameBuffer;
-  frameBuffer.insert("R", Slice(FLOAT, (char*)image.data(), sizeof(Vec3f), sizeof(Vec3f) * image.getWidth()));
-  frameBuffer.insert("G", Slice(FLOAT, ((char*)image.data()) + sizeof(float) * 1, sizeof(Vec3f), sizeof(Vec3f) * image.getWidth()));
-  frameBuffer.insert("B", Slice(FLOAT, ((char*)image.data()) + sizeof(float) * 2, sizeof(Vec3f), sizeof(Vec3f) * image.getWidth()));
-  file.setFrameBuffer(frameBuffer);
-  file.writePixels(image.getHeight());
+  std::unique_ptr<OIIO::ImageOutput> out = OIIO::ImageOutput::create (filename);
+  if (!out)
+  {
+    throw std::runtime_error("could not open file " + filename.string() + " for writing");
+  }
+  OIIO::TypeDesc typeDesc = OIIO::TypeDesc::FLOAT;
+  OIIO::ImageSpec spec(image.getWidth(), image.getHeight(), 3, typeDesc);
+  out->open (filename, spec);
+  out->write_image(typeDesc, image.data());
+  out->close ();
 }
-Image1f readPNG1(const std::filesystem::path& filename)
-{
-  FILE *fp = fopen(filename.string().c_str(), "rb");
-  if (fp == nullptr)
-  {
-    throw std::runtime_error(" could not open " + filename.string() + " for reading ");
-  }
-  png_structp png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
-  png_infop info_ptr = png_create_info_struct(png_ptr);  // <-- creating a new, local info_ptr 
-  png_init_io(png_ptr, fp);
-  png_read_png(png_ptr, info_ptr, PNG_TRANSFORM_STRIP_16 | PNG_TRANSFORM_STRIP_ALPHA | PNG_TRANSFORM_PACKING | PNG_TRANSFORM_EXPAND, NULL);
-  uint32_t width = png_get_image_width(png_ptr, info_ptr);
-  uint32_t height = png_get_image_height(png_ptr, info_ptr);
-  png_byte color_type = png_get_color_type(png_ptr, info_ptr);
-  if (color_type != PNG_COLOR_TYPE_GRAY)
-  {
-    throw std::runtime_error(filename.string() + " not supported texture format ");
-  }
-  png_byte bit_depth = png_get_bit_depth(png_ptr, info_ptr);
-  if (bit_depth != 8)
-  {
-    throw std::runtime_error(filename.string() + " not supported texture format; bit depth ");
-  }
-  png_bytepp row_pointers = png_get_rows(png_ptr, info_ptr);
-  std::size_t row_bytes = png_get_rowbytes(png_ptr, info_ptr);
-  
-  int numChannels = 1;
-
-  assert(row_bytes == numChannels * width);
-  std::unique_ptr<uint8_t[]> outData = std::make_unique<uint8_t[]>(row_bytes * height);
-  for (uint32_t i = 0; i < height; i++) {
-      memcpy(outData.get() + (row_bytes * i), row_pointers[i], row_bytes);
-  }
-
-  png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
-
-  fclose(fp);
-
-  
-  Image1f image;
-  image.resize(width, height);
-
-  for (uint32_t y = 0; y < height; y++)
-  {
-    for (uint32_t x = 0; x < width; x++)
-    {
-      std::size_t index = width * numChannels * y + numChannels * x;
-      unsigned char c = outData[index];
-      image(x, y) = float(c);
-    }
-  }
-  return image;
-}
-Image3f readPNG3(const std::filesystem::path& filename)
-{
-  FILE *fp = fopen(filename.string().c_str(), "rb");
-  if (fp == nullptr)
-  {
-    throw std::runtime_error(" could not open " + filename.string() + " for reading ");
-  }
-  png_structp png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
-  png_infop info_ptr = png_create_info_struct(png_ptr);  // <-- creating a new, local info_ptr 
-  png_init_io(png_ptr, fp);
-  png_read_png(png_ptr, info_ptr, PNG_TRANSFORM_STRIP_16 | PNG_TRANSFORM_STRIP_ALPHA | PNG_TRANSFORM_PACKING | PNG_TRANSFORM_EXPAND, NULL);
-  uint32_t width = png_get_image_width(png_ptr, info_ptr);
-  uint32_t height = png_get_image_height(png_ptr, info_ptr);
-  png_byte color_type = png_get_color_type(png_ptr, info_ptr);
-  if (color_type != PNG_COLOR_TYPE_RGB)
-  {
-    throw std::runtime_error(filename.string() + " not supported texture format ");
-  }
-  png_byte bit_depth = png_get_bit_depth(png_ptr, info_ptr);
-  if (bit_depth != 8)
-  {
-    throw std::runtime_error(filename.string() + " not supported texture format; bit depth ");
-  }
-  png_bytepp row_pointers = png_get_rows(png_ptr, info_ptr);
-  std::size_t row_bytes = png_get_rowbytes(png_ptr, info_ptr);
-  
-  int numChannels = 3;
-
-  assert(row_bytes == numChannels * width);
-  std::unique_ptr<uint8_t[]> outData = std::make_unique<uint8_t[]>(row_bytes * height);
-  for (uint32_t i = 0; i < height; i++) {
-      memcpy(outData.get() + (row_bytes * i), row_pointers[i], row_bytes);
-  }
-
-  png_destroy_read_struct(&png_ptr, &info_ptr, NULL);
-
-  fclose(fp);
-
-  
-  Image3f image;
-  image.resize(width, height);
-
-  for (uint32_t y = 0; y < height; y++)
-  {
-    for (uint32_t x = 0; x < width; x++)
-    {
-      for (std::size_t k = 0; k < numChannels; k++)
-      {
-        std::size_t index = width * numChannels * y + numChannels * x + k;
-        unsigned char c = outData[index];
-        image(x, y)[k] = float(c);
-      }
-    }
-  }
-  return image;
-}
-
 
 }

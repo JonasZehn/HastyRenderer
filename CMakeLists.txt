@@ -10,13 +10,12 @@ set (CMAKE_CXX_STANDARD 17)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(tinyobjloader CONFIG REQUIRED)
 find_package(embree 3 CONFIG REQUIRED)
-find_package(OpenEXR CONFIG REQUIRED)
-find_package(PNG REQUIRED)
 find_package(robin_hood CONFIG REQUIRED)
 find_package(SDL2 CONFIG REQUIRED)
 find_package(benchmark CONFIG REQUIRED)
 find_package(GTest CONFIG REQUIRED)
 find_package(TBB CONFIG REQUIRED)
+find_package(OpenImageIO CONFIG REQUIRED)
 
 include(AddShishua)
 include(DownloadOpenImageDenoise)
@@ -33,10 +32,10 @@ target_link_libraries(
     PRIVATE
         tinyobjloader::tinyobjloader
         embree
-        OpenEXR::OpenEXR
-        PNG::PNG
         robin_hood::robin_hood
-        libshishua)
+        libshishua
+        OpenImageIO::OpenImageIO
+        )
 
 set(source_files "apps/ViewerUtils.cpp" "apps/ViewerUtils.h")
 add_library(libHastyRendererViewer STATIC ${source_files})

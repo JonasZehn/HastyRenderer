@@ -20,16 +20,7 @@ ResultType Texture<ResultType>::evaluate(const SurfaceInteraction& interaction)
 
 std::unique_ptr<Texture<float> > TextureTraits<float>::loadTexture(const std::filesystem::path& filename, ColorSpace colorSpaceInFile)
 {
-  Image1f image;
-  if (filename.extension() == ".png")
-  {
-    image = readPNG1(filename);
-    image /= 255.f; // convert from [0, 255] to [0, 1]
-  }
-  else
-  {
-    throw std::runtime_error("unsupported extension of " + filename.string());
-  }
+  Image1f image = readImage1f(filename);
   
   switch (colorSpaceInFile)
   {
@@ -43,20 +34,7 @@ std::unique_ptr<Texture<float> > TextureTraits<float>::loadTexture(const std::fi
 }
 std::unique_ptr<Texture<Vec3f> > TextureTraits<Vec3f>::loadTexture(const std::filesystem::path& filename, ColorSpace colorSpaceInFile)
 {
-  Image3f image;
-  if (filename.extension() == ".exr")
-  {
-    image = readEXR3(filename);
-  }
-  else if (filename.extension() == ".png")
-  {
-    image = readPNG3(filename);
-    image /= 255.f; // convert from [0, 255] to [0, 1]
-  }
-  else
-  {
-    throw std::runtime_error("unsupported extension of " + filename.string());
-  }
+  Image3f image = readImage3f(filename);
   
   // convert to linear space
   switch (colorSpaceInFile)
