@@ -42,13 +42,13 @@ public:
   void updateMedia(const RenderContext& context, const RayHit& hit, const Vec3f& wi);
   int getWavelength(RNG& rng, const Vec3f& probabilities);
   void applyWavelength(Vec3f& throughput);
-  float getOutsideIOR(const RenderContext& context, const RayHit& rayhit);
+  float getOutsideIOR(const RenderContext& context, const RayHit& rayhit) const ;
 
   int wavelength;
 
 private:
   void recompute();
-  SmallVector<LightRayInfoMedium, 3> m_media;
+  SmallVector<LightRayInfoMedium, 4> m_media;
   Vec3f transmittance;
   float probabilityChange;
 };

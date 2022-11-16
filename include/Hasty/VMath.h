@@ -52,8 +52,10 @@ class Vec2f
 public:
   Vec2f()
   {
+#ifdef INITIALIZE_WITH_NAN
     m_data[0] = std::numeric_limits<float>::signaling_NaN();
     m_data[1] = std::numeric_limits<float>::signaling_NaN();
+#endif
   }
   Vec2f(float x, float y)
   {
@@ -122,9 +124,11 @@ public:
 
   Vec3f()
   {
+#ifdef INITIALIZE_WITH_NAN
     m_data[0] = std::numeric_limits<float>::signaling_NaN();
     m_data[1] = std::numeric_limits<float>::signaling_NaN();
     m_data[2] = std::numeric_limits<float>::signaling_NaN();
+#endif
   }
   Vec3f(float x, float y, float z)
   {
@@ -319,10 +323,12 @@ class Vec4f
 public:
   Vec4f()
   {
+#ifdef INITIALIZE_WITH_NAN
     m_data[0] = std::numeric_limits<float>::signaling_NaN();
     m_data[1] = std::numeric_limits<float>::signaling_NaN();
     m_data[2] = std::numeric_limits<float>::signaling_NaN();
     m_data[3] = std::numeric_limits<float>::signaling_NaN();
+#endif
   }
   Vec4f(float x, float y, float z, float w)
   {
@@ -408,10 +414,12 @@ class Mat2f
 public:
   Mat2f()
   {
+#ifdef INITIALIZE_WITH_NAN
     m_data[0] = std::numeric_limits<float>::signaling_NaN();
     m_data[1] = std::numeric_limits<float>::signaling_NaN();
     m_data[2] = std::numeric_limits<float>::signaling_NaN();
     m_data[3] = std::numeric_limits<float>::signaling_NaN();
+#endif
   }
   Mat2f(const Vec2f& col1, const Vec2f& col2)
   {

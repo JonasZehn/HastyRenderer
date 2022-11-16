@@ -321,13 +321,13 @@ MaterialEvalResult Scene::evaluteBRDF(const RayHit& hit, const Vec3f& wo, const 
   return getBXDF(hit.interaction).evaluate(hit.interaction, wo, wi, indexOfRefractionOutside, adjoint, flags);
 }
 
-Vec3f Scene::sampleBRDF(RenderContext& context, LightRayInfo& lightRay, const RayHit& rayhit, bool adjoint, Vec3f* throughputDiffuse, Vec3f* throughputSpecular, float* pDensity, bool *outside)
+SampleResult Scene::sampleBRDF(RenderContext& context, const LightRayInfo& lightRay, const RayHit& rayhit, bool adjoint)
 {
-  return getBXDF(rayhit.interaction).sample(context.rng, rayhit.interaction, lightRay, rayhit.wFrom(), [&lightRay, &context, &rayhit]() { return lightRay.getOutsideIOR(context, rayhit); }, adjoint, throughputDiffuse, throughputSpecular, pDensity, outside, ShaderEvalFlag::ALL);
+  return getBXDF(rayhit.interaction).sample(context.rng, rayhit.interaction, lightRay, rayhit.wFrom(), [&lightRay, &context, &rayhit]() { return lightRay.getOutsideIOR(context, rayhit); }, adjoint, ShaderEvalFlag::ALL);
 }
-Vec3f Scene::sampleBRDFSpecular(RenderContext& context, LightRayInfo& lightRay, const RayHit& rayhit, bool adjoint, Vec3f* throughputDiffuse, Vec3f* throughputSpecular, float* pDensity, bool *outside)
+SampleResult Scene::sampleBRDFSpecular(RenderContext& context, const LightRayInfo& lightRay, const RayHit& rayhit, bool adjoint)
 {
-  return getBXDF(rayhit.interaction).sample(context.rng, rayhit.interaction, lightRay, rayhit.wFrom(), [&lightRay, &context, &rayhit]() { return lightRay.getOutsideIOR(context, rayhit); }, adjoint, throughputDiffuse, throughputSpecular, pDensity, outside, ShaderEvalFlag::SPECULAR);
+  return getBXDF(rayhit.interaction).sample(context.rng, rayhit.interaction, lightRay, rayhit.wFrom(), [&lightRay, &context, &rayhit]() { return lightRay.getOutsideIOR(context, rayhit); }, adjoint, ShaderEvalFlag::SPECULAR);
 }
 float Scene::evaluateSamplePDF(const RayHit& rayhit, const Vec3f& direction2)
 {

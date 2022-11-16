@@ -7,12 +7,10 @@ namespace Hasty
 
 void LightRayInfo::updateMedia(const RenderContext& context, const RayHit& hit, const Vec3f& wTo)
 {
-  //std::cout << " hit.normalGeometric.dot(wi) " << hit.normalGeometric.dot(wi) << std::endl;
   float ndotFrom = hit.interaction.normalGeometric.dot(hit.wFrom());
   float ndotTo = hit.interaction.normalGeometric.dot(wTo);
   if (ndotFrom >= 0.0f && ndotTo < 0.0f)
   { //entering medium
-    //std::cout << " entering medium " << hit.rtc.hit.geomID << std::endl;
     Vec3f t = context.scene.getAlbedo(hit.interaction);
     float indexOfRefractionInside = context.scene.getIORInside(hit, this->wavelength);
     m_media.emplace_back(LightRayInfoMedium(hit.rtc.hit.geomID, t, indexOfRefractionInside));
@@ -20,25 +18,19 @@ void LightRayInfo::updateMedia(const RenderContext& context, const RayHit& hit, 
   }
   else if (ndotFrom < 0.0f && ndotTo >= 0.0f)
   { // leaving medium
-    //std::cout << " leaving medium " << hit.rtc.hit.geomID << std::endl;
-    int leaveMed = ((int)hit.rtc.hit.geomID);
-    int medIdx = -1;
+    int leaveMediumId = ((int)hit.rtc.hit.geomID);
+    int mediumIndex = -1;
     for (int i = 0; i < m_media.size(); i++)
     {
-      if (m_media[i].geomID == leaveMed)
+      if (m_media[i].geomID == leaveMediumId)
       {
-        medIdx = i;
+        mediumIndex = i;
         break;
       }
     }
-    //std::cout << " removing " << leaveMed << " from slot " << medIdx << std::endl;
-    if (medIdx == -1)
+    if (mediumIndex != -1)
     {
-      //std::cout << "remove: warning medium not found " << " ndotFrom " << ndotFrom << " ndotTo " << ndotTo << " name: " << context.scene.getObjectName(hit) << std::endl;
-    }
-    else
-    {
-      m_media.remove(medIdx);
+      m_media.remove(mediumIndex);
       recompute();
     }
   }
@@ -84,7 +76,7 @@ int LightRayInfo::getWavelength(RNG& rng, const Vec3f& weights)
   }
   return wavelength;
 }
-float LightRayInfo::getOutsideIOR(const RenderContext& context, const RayHit& rayhit)
+float LightRayInfo::getOutsideIOR(const RenderContext& context, const RayHit& rayhit) const
 {
   // this structure stores the current index of refraction; we have to deal with multiple overlapping Manifold shapes, if they don't overlap then we will fetch the medium from the world and geomID becomes -1
   //  if they overlap we will assume that the first material we hit is the medium (this is an inconsistent view of the world but cheaper) and when we leave the other object, we keep the medium...
@@ -92,17 +84,17 @@ float LightRayInfo::getOutsideIOR(const RenderContext& context, const RayHit& ra
   {
     //coming from the inside of an object
 
-    int leaveMed = ((int)rayhit.rtc.hit.geomID);
-    int medIdx = -1;
+    int leaveMediumId = ((int)rayhit.rtc.hit.geomID);
+    int mediumIndex = -1;
     for (int i = 0; i < m_media.size(); i++)
     {
-      if (m_media[i].geomID == leaveMed)
+      if (m_media[i].geomID == leaveMediumId)
       {
-        medIdx = i;
+        mediumIndex = i;
         break;
       }
     }
-    if (medIdx == -1)
+    if (mediumIndex == -1)
     {
       //std::cout << "warning medium not found, dot " << rayhit.wFrom().dot(rayhit.normalGeometric) << " leaving " << leaveMed << " normal " << rayhit.normalGeometric << " wfrom " << rayhit.wFrom() << std::endl;
       // this can also be a non manifold object from the other side
@@ -113,7 +105,7 @@ float LightRayInfo::getOutsideIOR(const RenderContext& context, const RayHit& ra
       if (m_media.size() == 1) return 1.0f;
       else
       {
-        if (medIdx == 0) return m_media[1].indexOfRefraction;
+        if (mediumIndex == 0) return m_media[1].indexOfRefraction;
         else return m_media[0].indexOfRefraction;
       }
     }

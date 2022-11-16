@@ -53,7 +53,6 @@ inline bool hasHitSurface(const RayHit& rayhit, unsigned int geomID, unsigned in
   return rayhit.rtc.hit.geomID == geomID && rayhit.rtc.hit.primID == primID;
 }
 
-
 class Scene
 {
 public:
@@ -73,8 +72,8 @@ protected:
   const BXDF& getBXDF(const SurfaceInteraction& interaction) const;
 public:
   MaterialEvalResult evaluteBRDF(const RayHit& hit, const Vec3f& wo, const Vec3f& wi, float indexOfRefractionOutside, bool adjoint, ShaderEvalFlag flags = ShaderEvalFlag::ALL);
-  Vec3f sampleBRDF(RenderContext& context, LightRayInfo& lightRay, const RayHit& rayhit, bool adjoint, Vec3f* throughputDiffuse, Vec3f* throughputSpecular, float* pDensity, bool *outside);
-  Vec3f sampleBRDFSpecular(RenderContext& context, LightRayInfo& lightRay, const RayHit& rayhit, bool adjoint, Vec3f* throughputDiffuse, Vec3f* throughputSpecular, float* pDensity, bool *outside);
+  SampleResult sampleBRDF(RenderContext& context, const LightRayInfo& lightRay, const RayHit& rayhit, bool adjoint);
+  SampleResult sampleBRDFSpecular(RenderContext& context, const LightRayInfo& lightRay, const RayHit& rayhit, bool adjoint);
   float evaluateSamplePDF(const RayHit& rayhit, const Vec3f& direction2);
   bool hasBRDFDiffuseLobe(const RayHit& rayhit);
   float getIORInside(const RayHit& rayhit, int wavelength);

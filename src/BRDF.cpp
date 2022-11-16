@@ -280,13 +280,15 @@ MaterialEvalResult GlassBTDF::evaluateSpecular(const SurfaceInteraction& interac
   return MaterialEvalResult(Vec3f::Zero(), f, normal);
 }
 
-Vec3f GlassBTDF::sample(RNG& rng, const SurfaceInteraction& interaction, LightRayInfo& lightRay, const Vec3f& wOut, OutsideIORFunctor getOutsideIOR, bool adjoint,Vec3f* throughputDiffuse, Vec3f* throughputSpecular, float* pDensity, bool *outside, ShaderEvalFlag evalFlag)
+SampleResult GlassBTDF::sample(RNG& rng, const SurfaceInteraction& interaction, const LightRayInfo& lightRay, const Vec3f& wOut, OutsideIORFunctor getOutsideIOR, bool adjoint, ShaderEvalFlag evalFlag)
 {
   // We interpet evalFlag :: ALL = whole distribution
   assert(evalFlag != ShaderEvalFlag::NONE); // no distribution to sample
   assert(evalFlag != ShaderEvalFlag::DIFFUSE); // no distribution to sample
-  (*throughputDiffuse) = Vec3f::Zero();
-  return this->sampleSpecular(rng, interaction, lightRay, wOut, getOutsideIOR, adjoint, throughputDiffuse, throughputSpecular, pDensity, outside);
+  SampleResult result;
+  result.lightRay = lightRay;
+  result.direction = this->sampleSpecular(rng, interaction, result.lightRay, wOut, getOutsideIOR, adjoint, &result.throughputDiffuse, &result.throughputSpecular, &result.pdfOmega, &result.outside);
+  return result;
 }
 Vec3f GlassBTDF::sampleSpecular(RNG& rng, const SurfaceInteraction& interaction, LightRayInfo& lightRay, const Vec3f& wo, OutsideIORFunctor getOutsideIOR, bool adjoint, Vec3f* throughputDiffuse, Vec3f* throughputSpecular, float* pDensity, bool *outside)
 {
@@ -521,21 +523,25 @@ MaterialEvalResult PrincipledBRDF::evaluate(const SurfaceInteraction& interactio
   return result;
 }
 
-Vec3f PrincipledBRDF::sample(RNG& rng, const SurfaceInteraction& interaction, LightRayInfo& lightRay, const Vec3f& wOut, OutsideIORFunctor getOutsideIOR, bool adjoint, Vec3f* throughputDiffuse, Vec3f* throughputSpecular, float* pDensity, bool *outside, ShaderEvalFlag evalFlag)
+SampleResult PrincipledBRDF::sample(RNG& rng, const SurfaceInteraction& interaction, const LightRayInfo& lightRay, const Vec3f& wOut, OutsideIORFunctor getOutsideIOR, bool adjoint, ShaderEvalFlag evalFlag)
 {
+  SampleResult result;
+
   assert(evalFlag != ShaderEvalFlag::NONE); // no distribution to sample
   assert(evalFlag != ShaderEvalFlag::DIFFUSE); // not implemented
   if (evalFlag == ShaderEvalFlag::SPECULAR)
   {
-    return this->sampleSpecular(rng, interaction, lightRay, wOut, getOutsideIOR, adjoint, throughputDiffuse, throughputSpecular, pDensity, outside);
+    result.direction = this->sampleSpecular(rng, interaction, lightRay, wOut, getOutsideIOR, adjoint, &result.throughputDiffuse, &result.throughputSpecular, &result.pdfOmega, &result.outside);
+    return result;
   }
-  *outside = wOut.dot(interaction.normalGeometric) > 0.0f;
-  if (!(*outside))
+  result.outside = wOut.dot(interaction.normalGeometric) > 0.0f;
+  if (!result.outside)
   {
-    (*pDensity) = 1.0;
-    (*throughputDiffuse) = Vec3f::Zero();
-    (*throughputSpecular) = Vec3f::Zero();
-    return -interaction.normalGeometric; // returning any direction, cause there should be no value that is nonzero
+    result.pdfOmega = 1.0;
+    result.throughputDiffuse = Vec3f::Zero();
+    result.throughputSpecular = Vec3f::Zero();
+    result.direction = -interaction.normalGeometric; // returning any direction, cause there should be no value that is nonzero
+    return result;
   }
 
   float outsideIOR = getOutsideIOR();
@@ -543,10 +549,11 @@ Vec3f PrincipledBRDF::sample(RNG& rng, const SurfaceInteraction& interaction, Li
   Vec3f normalShading = getShadingNormal(interaction, wOut);
   if (wOut.dot(normalShading) <= 0.0f)
   {
-    (*pDensity) = 1.0;
-    (*throughputDiffuse) = Vec3f::Zero();
-    (*throughputSpecular) = Vec3f::Zero();
-    return -interaction.normalGeometric; // returning any direction, cause there should be no value that is nonzero
+    result.pdfOmega = 1.0;
+    result.throughputDiffuse = Vec3f::Zero();
+    result.throughputSpecular = Vec3f::Zero();
+    result.direction = -interaction.normalGeometric; // returning any direction, cause there should be no value that is nonzero
+    return result;
   }
   
   float roughnessHit = roughness->evaluate(interaction);
@@ -565,13 +572,12 @@ Vec3f PrincipledBRDF::sample(RNG& rng, const SurfaceInteraction& interaction, Li
   //       = \int f L cos(omega)  (pSpec  p_spec(omega) + (1 - pSpec)p_diff(omega)) / (pSpec p_spec(omega) + (1 - pSpec) p_diff(omega))  ) domega
   //       = \int f L cos(omega) domega = E[F]
 
-  Vec3f direction2;
   bool useSpecularStrategy = rng.uniform01f() < pSpecularStrategy;
   if (useSpecularStrategy)
   {
     float pdfSpec;
-    direction2 = sampleSpecular(rng, interaction, lightRay, wOut, getOutsideIOR, adjoint, throughputDiffuse, throughputSpecular, &pdfSpec, outside);
-    float pdfDiffuse = evaluateHemisphereCosImportancePDF(normalShading, direction2);
+    result.direction = sampleSpecular(rng, interaction, lightRay, wOut, getOutsideIOR, adjoint, &result.throughputDiffuse, &result.throughputSpecular, &pdfSpec, &result.outside);
+    float pdfDiffuse = evaluateHemisphereCosImportancePDF(normalShading, result.direction);
 
     if (alpha == 0.0f) // delta distribution; need to keep wierd fake measure
     {
@@ -586,57 +592,56 @@ Vec3f PrincipledBRDF::sample(RNG& rng, const SurfaceInteraction& interaction, Li
       //       = L f_specular(omega_specular) cos(omega_specular) + \int L cos(omega) df_diffuse
       //       = int  L cos(omega) df_specular + \int L cos(omega) df_diffuse
       //       = \int L cos(omega) df
-      (*pDensity) = pSpecularStrategy;
-      if ((*pDensity) == 0.0f) { std::cout << "error1 density 0 " << pSpecularStrategy  << std::endl; }
-      MaterialEvalResult evalSpecular = this->evaluate(interaction, wOut, direction2, outsideIOR, adjoint, ShaderEvalFlag::SPECULAR);
-      float m = cosTerm(wOut, direction2, interaction.normalGeometric, normalShading, adjoint) / pSpecularStrategy;
-      (*throughputDiffuse) = Vec3f::Zero();
-      (*throughputSpecular) = evalSpecular.fSpecular * m;
+      result.pdfOmega = pSpecularStrategy;
+      if (result.pdfOmega == 0.0f) { std::cout << "error1 density 0 " << pSpecularStrategy  << std::endl; }
+      MaterialEvalResult evalSpecular = this->evaluate(interaction, wOut, result.direction, outsideIOR, adjoint, ShaderEvalFlag::SPECULAR);
+      float m = cosTerm(wOut, result.direction, interaction.normalGeometric, normalShading, adjoint) / pSpecularStrategy;
+      result.throughputDiffuse = Vec3f::Zero();
+      result.throughputSpecular = evalSpecular.fSpecular * m;
     }
     else
     {
-      (*pDensity) = pSpecularStrategy * pdfSpec + (1.0f - pSpecularStrategy) * pdfDiffuse;
-      if ((*pDensity) == 0.0f) { std::cout << "error1 density 0 " << pSpecularStrategy << ' ' << pdfSpec << ' ' << pdfDiffuse << std::endl; }
-      MaterialEvalResult evalResult = this->evaluate(interaction, wOut, direction2, outsideIOR, adjoint, ShaderEvalFlag::ALL);
-      float m = cosTerm(wOut, direction2, interaction.normalGeometric, normalShading, adjoint) / (*pDensity);
-      (*throughputDiffuse) = evalResult.fDiffuse * m;
-      (*throughputSpecular) = evalResult.fSpecular * m;
+      result.pdfOmega = pSpecularStrategy * pdfSpec + (1.0f - pSpecularStrategy) * pdfDiffuse;
+      if (result.pdfOmega == 0.0f) { std::cout << "error1 density 0 " << pSpecularStrategy << ' ' << pdfSpec << ' ' << pdfDiffuse << std::endl; }
+      MaterialEvalResult evalResult = this->evaluate(interaction, wOut, result.direction, outsideIOR, adjoint, ShaderEvalFlag::ALL);
+      float m = cosTerm(wOut, result.direction, interaction.normalGeometric, normalShading, adjoint) / result.pdfOmega;
+      result.throughputDiffuse = evalResult.fDiffuse * m;
+      result.throughputSpecular = evalResult.fSpecular * m;
     }
   }
   else
   {
     float pdfDiffuse;
-    direction2 = sampleHemisphereCosImportance(rng, normalShading, &pdfDiffuse);
+    result.direction = sampleHemisphereCosImportance(rng, normalShading, &pdfDiffuse);
 
     if (alpha == 0.0f) // delta distribution; need to keep wierd fake measure
     {
-      (*pDensity) = (1.0f - pSpecularStrategy) * pdfDiffuse;
-      if ((*pDensity) == 0.0f) { std::cout << "error2 density 0 " << pSpecularStrategy << ' ' << pdfDiffuse << std::endl; }
-      MaterialEvalResult evalDiffuse = this->evaluate(interaction, wOut, direction2, outsideIOR, adjoint, ShaderEvalFlag::DIFFUSE);
-      float m = cosTerm(wOut, direction2, interaction.normalGeometric, normalShading, adjoint) / (*pDensity);
-      (*throughputDiffuse) = evalDiffuse.fDiffuse * m;
-      (*throughputSpecular) = Vec3f::Zero();
+      result.pdfOmega = (1.0f - pSpecularStrategy) * pdfDiffuse;
+      if (result.pdfOmega == 0.0f) { std::cout << "error2 density 0 " << pSpecularStrategy << ' ' << pdfDiffuse << std::endl; }
+      MaterialEvalResult evalDiffuse = this->evaluate(interaction, wOut, result.direction, outsideIOR, adjoint, ShaderEvalFlag::DIFFUSE);
+      float m = cosTerm(wOut, result.direction, interaction.normalGeometric, normalShading, adjoint) / result.pdfOmega;
+      result.throughputDiffuse = evalDiffuse.fDiffuse * m;
+      result.throughputSpecular = Vec3f::Zero();
     }
     else
     {
-      float pdfSpec = sampleGGXVNDFGlobalDensity(normalShading, alpha, wOut, direction2);
-      (*pDensity) = pSpecularStrategy * pdfSpec + (1.0f - pSpecularStrategy) * pdfDiffuse;
-      if ((*pDensity) == 0.0f) { std::cout << "error3 density 0 " << pSpecularStrategy << ' ' << pdfSpec << ' ' << pdfDiffuse << std::endl; }
-      MaterialEvalResult evalResult = this->evaluate(interaction, wOut, direction2, outsideIOR, adjoint, ShaderEvalFlag::ALL);
-      float m = cosTerm(wOut, direction2, interaction.normalGeometric, normalShading, adjoint) / (*pDensity);
-      (*throughputDiffuse) = evalResult.fDiffuse * m;
-      (*throughputSpecular) = evalResult.fSpecular * m;
+      float pdfSpec = sampleGGXVNDFGlobalDensity(normalShading, alpha, wOut, result.direction);
+      result.pdfOmega = pSpecularStrategy * pdfSpec + (1.0f - pSpecularStrategy) * pdfDiffuse;
+      if (result.pdfOmega == 0.0f) { std::cout << "error3 density 0 " << pSpecularStrategy << ' ' << pdfSpec << ' ' << pdfDiffuse << std::endl; }
+      MaterialEvalResult evalResult = this->evaluate(interaction, wOut, result.direction, outsideIOR, adjoint, ShaderEvalFlag::ALL);
+      float m = cosTerm(wOut, result.direction, interaction.normalGeometric, normalShading, adjoint) / result.pdfOmega;
+      result.throughputDiffuse = evalResult.fDiffuse * m;
+      result.throughputSpecular = evalResult.fSpecular * m;
     }
   }
 
-
-  assertUnitLength(direction2);
-  assertFinite(*throughputDiffuse);
-  assertFinite(*throughputSpecular);
-  assertFinite(*pDensity);
-  return direction2;
+  assertUnitLength(result.direction);
+  assertFinite(result.throughputDiffuse);
+  assertFinite(result.throughputSpecular);
+  assertFinite(result.pdfOmega);
+  return result;
 }
-Vec3f PrincipledBRDF::sampleSpecular(RNG& rng, const SurfaceInteraction& interaction, LightRayInfo& lightRay, const Vec3f& wOut, OutsideIORFunctor getOutsideIOR, bool adjoint, Vec3f* throughputDiffuse, Vec3f* throughputSpecular, float* pDensity, bool *outside)
+Vec3f PrincipledBRDF::sampleSpecular(RNG& rng, const SurfaceInteraction& interaction, const LightRayInfo& lightRay, const Vec3f& wOut, OutsideIORFunctor getOutsideIOR, bool adjoint, Vec3f* throughputDiffuse, Vec3f* throughputSpecular, float* pDensity, bool *outside)
 {
   *outside = wOut.dot(interaction.normalGeometric) > 0.0f;
   if (!(*outside))

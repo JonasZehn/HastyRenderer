@@ -20,12 +20,15 @@ float computeMsiWeightPowerHeuristic(int index, const T& pdfs)
   return result;
 }
 
-struct SampleResult
+
+class MISSampleResult
 {
+public:
   Ray ray;
+  LightRayInfo lightRay;
   RayHit rayhit;
-  Vec3f throughputDiffuse = Vec3f::Zero();
-  Vec3f throughputSpecular = Vec3f::Zero();
+  Vec3f throughputDiffuse;
+  Vec3f throughputSpecular;
   float pdfOmega;
 
   Vec3f throughput() const
@@ -38,7 +41,7 @@ class BRDFSamplingStrategy
 {
 public:
 
-  SampleResult sample(RenderContext context, LightRayInfo& lightRay, const Ray& ray, const RayHit& rayhit);
+  MISSampleResult sample(RenderContext context, const LightRayInfo& lightRay, const Ray& ray, const RayHit& rayhit);
   float evalPDF(RenderContext context, const RayHit& rayhit, const Vec3f& woGlobal, const Ray& ray2, const RayHit& rayhit2);
 };
 
@@ -46,7 +49,7 @@ class LightSamplingStrategy
 {
 public:
   ShaderEvalFlag flags = ShaderEvalFlag::ALL;
-  SampleResult sample(RenderContext context, LightRayInfo& lightRay, const Ray& ray, const RayHit& rayhit);
+  MISSampleResult sample(RenderContext context, const LightRayInfo& lightRay, const Ray& ray, const RayHit& rayhit);
   float evalPDF(RenderContext context, const RayHit& rayhit, const Vec3f& woGlobal, const Ray& ray2, const RayHit& rayhit2);
 };
 
@@ -80,7 +83,7 @@ public:
   }
 
   // samples a POINT x2 and computes an according probability density and visibility
-  SampleResult sample(RenderContext context, LightRayInfo& lightRay, const Ray& ray, const RayHit& rayhit, int strategy)
+  MISSampleResult sample(RenderContext context, const LightRayInfo& lightRay, const Ray& ray, const RayHit& rayhit, int strategy)
   {
     if (isLightStrategy(strategy))
     {

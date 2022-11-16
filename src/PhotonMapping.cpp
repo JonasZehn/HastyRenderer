@@ -224,31 +224,29 @@ void tracePhoton(RenderContext context, PhotonMap& photonMap, const Ray& a_ray, 
     }
 
     // sample output direction
-    float pdfOmega;
-    Vec3f throughputThisDiffuse, throughputThisSpecular, throughputThis;
     bool adjoint = true;
-    Vec3f direction2;
-    bool outside;
+    SampleResult sampleResult;
     if (causticsMap)
     {
-      direction2 = context.scene.sampleBRDFSpecular(context, lightRay, rayhit, adjoint, &throughputThisDiffuse, &throughputThisSpecular, &pdfOmega, &outside);
+      sampleResult = context.scene.sampleBRDFSpecular(context, lightRay, rayhit, adjoint);
     }
     else
     {
-      direction2 = context.scene.sampleBRDF(context, lightRay, rayhit, adjoint, &throughputThisDiffuse, &throughputThisSpecular, &pdfOmega, &outside);
+      sampleResult = context.scene.sampleBRDF(context, lightRay, rayhit, adjoint);
     }
-    throughputThis = throughputThisDiffuse + throughputThisSpecular;
+    lightRay = sampleResult.lightRay;
+    Vec3f throughputThis = sampleResult.throughput();
     assertFinite(throughputThis);
     lightRay.applyWavelength(throughputThis);
     if (throughputThis == Vec3f::Zero()) break;
 
-    Ray ray2 = context.scene.constructRay(rayhit.interaction, direction2, outside);
+    Ray ray2 = context.scene.constructRay(rayhit.interaction, sampleResult.direction, sampleResult.outside);
     RayHit rayhit2;
     context.scene.rayHit(ray2, &rayhit2);
     if (!hasHitSurface(rayhit2) || isSelfIntersection(rayhit, rayhit2)) break;
 
     //beer's law; moving from hit.x to hit2.x;
-    lightRay.updateMedia(context, rayhit, direction2);
+    lightRay.updateMedia(context, rayhit, sampleResult.direction);
     Vec3f transmittance = beersLaw(lightRay.getTransmittance(), (rayhit2.interaction.x - ray2.origin()).norm());
     throughputThis = throughputThis.cwiseProd(transmittance);
 
@@ -348,18 +346,15 @@ GatherPhotonsResult gatherPhotons(RenderContext context, PhotonMap& photonMap, c
     result.L += throughput.cwiseProd(context.scene.getEmissionRadiance(rayhit.wFrom(), rayhit));
 
     bool doADiffuseBounce = false;
-    float pdfOmega;
     bool adjoint = false;
-    Vec3f throughputThisDiffuse, throughputThisSpecular;
-    Vec3f direction2;
-    bool outside;
+    SampleResult sampleResult;
     if (doADiffuseBounce && depth == 0)
     {
-      direction2 = context.scene.sampleBRDF(context, lightRay, rayhit, adjoint, &throughputThisDiffuse, &throughputThisSpecular, &pdfOmega, &outside);
+      sampleResult = context.scene.sampleBRDF(context, lightRay, rayhit, adjoint);
     }
     else
     {
-      direction2 = context.scene.sampleBRDFSpecular(context, lightRay, rayhit, adjoint, &throughputThisDiffuse, &throughputThisSpecular, &pdfOmega, &outside);
+      sampleResult = context.scene.sampleBRDFSpecular(context, lightRay, rayhit, adjoint);
 
       if (context.scene.hasBRDFDiffuseLobe(rayhit))
       {
@@ -368,7 +363,7 @@ GatherPhotonsResult gatherPhotons(RenderContext context, PhotonMap& photonMap, c
         result.photonFlux += throughput.cwiseProd(estimate.fluxEstimate);
       }
     }
-    Vec3f throughputThis = throughputThisDiffuse + throughputThisSpecular;
+    Vec3f throughputThis = sampleResult.throughput();
     assertFinite(throughputThis);
 
     lightRay.applyWavelength(throughput);
@@ -376,7 +371,7 @@ GatherPhotonsResult gatherPhotons(RenderContext context, PhotonMap& photonMap, c
     throughput = throughput.cwiseProd(throughputThis);
     if (throughput == Vec3f::Zero()) break;
 
-    Ray ray2 = context.scene.constructRay(rayhit.interaction, direction2, outside);
+    Ray ray2 = context.scene.constructRay(rayhit.interaction, sampleResult.direction, sampleResult.outside);
     RayHit rayhit2;
     context.scene.rayHit(ray2, &rayhit2);
 
@@ -463,10 +458,9 @@ PathTraceWithCausticsMapResult pathTraceWithCausticsMap(RenderContext context, P
 
     for (int strategy = 0; strategy < numStrategies; strategy++)
     {
-      LightRayInfo lightRay2 = lightRay;
-      SampleResult sampleResult = strategies.sample(context, lightRay2, ray, rayhit, strategy);
+      MISSampleResult sampleResult = strategies.sample(context, lightRay, ray, rayhit, strategy);
       Vec3f throughputWavelength = Vec3f::Ones();
-      lightRay2.applyWavelength(throughputWavelength);
+      sampleResult.lightRay.applyWavelength(throughputWavelength);
 
       pdfs[strategy] = sampleResult.pdfOmega;
 
@@ -478,8 +472,7 @@ PathTraceWithCausticsMapResult pathTraceWithCausticsMap(RenderContext context, P
       }
       float msiWeight = computeMsiWeightPowerHeuristic<beta>(strategy, pdfs);
       
-      lightRay2.updateMedia(context, rayhit, sampleResult.ray.direction());
-      
+      sampleResult.lightRay.updateMedia(context, rayhit, sampleResult.ray.direction());
       
       assertFinite(throughput);
       assertFinite(sampleResult.throughputDiffuse);
@@ -490,7 +483,7 @@ PathTraceWithCausticsMapResult pathTraceWithCausticsMap(RenderContext context, P
       assertFinite(throughput2);
 
       Vec3f normal2, albedo2;
-      PathTraceWithCausticsMapResult rs = pathTraceWithCausticsMap(context, photonMap, lightRay2, sampleResult.ray, &sampleResult.rayhit, normal2, albedo2, radius, depth + 1);
+      PathTraceWithCausticsMapResult rs = pathTraceWithCausticsMap(context, photonMap, sampleResult.lightRay, sampleResult.ray, &sampleResult.rayhit, normal2, albedo2, radius, depth + 1);
 
       result.LSpecular += (rs.LLight + rs.LSpecular).cwiseProd(throughputSpecularT);
       result.LCaustic += rs.LSpecular.cwiseProd(throughputDiffuseT);
@@ -610,24 +603,19 @@ float computeRadiusPixelFootPrint(RenderContext context, float defaultR, int i, 
       {
         break;
       }
-      float pdfOmega;
       bool adjoint = false;
-      Vec3f throughputThisDiffuse, throughputThisSpecular;
-      Vec3f direction2;
-      bool outside;
 
-      LightRayInfo lightRay;
-
+      SampleResult sampleResult;
 
       int tries = 0;
       do
       {
-        direction2 = context.scene.sampleBRDFSpecular(context, lightRay, rayhit, adjoint, &throughputThisDiffuse, &throughputThisSpecular, &pdfOmega, &outside);  //TODO make more explicit, this is quite unreadable ; split sampling strategy, sampling lboes, is lobe specular etc.
+        sampleResult = context.scene.sampleBRDFSpecular(context, LightRayInfo(), rayhit, adjoint);
         tries += 1;
-      } while (throughputThisSpecular == Vec3f::Zero() && tries < 3);
-      if (throughputThisSpecular == Vec3f::Zero()) break;
+      } while (sampleResult.throughputSpecular == Vec3f::Zero() && tries < 3);
+      if (sampleResult.throughputSpecular == Vec3f::Zero()) break;
 
-      Ray ray2 = context.scene.constructRay(rayhit.interaction, direction2, outside);
+      Ray ray2 = context.scene.constructRay(rayhit.interaction, sampleResult.direction, sampleResult.outside);
       RayHit rayhit2;
       context.scene.rayHit(ray2, &rayhit2);
       

@@ -53,6 +53,21 @@ struct MaterialEvalResult
   Vec3f normalShading;
 };
 
+struct SampleResult
+{
+  bool outside;
+  Vec3f direction;
+  LightRayInfo lightRay;
+  Vec3f throughputDiffuse;
+  Vec3f throughputSpecular;
+  float pdfOmega;
+
+  Vec3f throughput() const
+  {
+    return throughputDiffuse + throughputSpecular;
+  }
+};
+
 class BXDF
 {
 public:
@@ -60,7 +75,7 @@ public:
   virtual Vec3f getAlbedo(const SurfaceInteraction& interaction) const = 0;
   virtual MaterialEvalResult evaluate(const SurfaceInteraction& interaction, const Vec3f& wo, const Vec3f& wi, float indexOfRefractionOutside, bool adjoint, ShaderEvalFlag evalFlag) = 0;
 
-  virtual Vec3f sample(RNG& rng, const SurfaceInteraction& interaction, LightRayInfo& lightRay, const Vec3f& wOut, OutsideIORFunctor getOutsideIOR, bool adjoint, Vec3f* throughputDiffuse, Vec3f* throughputSpecular, float* pDensity, bool *outside, ShaderEvalFlag evalFlag) = 0;
+  virtual SampleResult sample(RNG& rng, const SurfaceInteraction& interaction, const LightRayInfo& lightRay, const Vec3f& wOut, OutsideIORFunctor getOutsideIOR, bool adjoint, ShaderEvalFlag evalFlag) = 0;
   virtual float evaluateSamplePDF(const SurfaceInteraction &interaction, const Vec3f& wo, const Vec3f& wi) = 0;
 
   virtual bool hasDiffuseLobe(const SurfaceInteraction& interaction) = 0;
@@ -92,7 +107,7 @@ public:
   MaterialEvalResult evaluate(const SurfaceInteraction& interaction, const Vec3f& wo, const Vec3f& wi, float indexOfRefractionOutside, bool adjoint, ShaderEvalFlag evalFlag);
   float evaluateSpecular(const Vec3f& wo, const Vec3f& wi, const Vec3f& normalGeometric, const Vec3f& normal, float indexOfRefractionOutside, float indexOfRefractionMat, bool adjoint);
   MaterialEvalResult evaluateSpecular(const SurfaceInteraction& interaction, const Vec3f& wo, const Vec3f& wi, const Vec3f &normalGeometric, const Vec3f& normal, float indexOfRefractionOutside, bool adjoint);
-  Vec3f sample(RNG& rng, const SurfaceInteraction& interaction, LightRayInfo& lightRay, const Vec3f& wOut, OutsideIORFunctor getOutsideIOR, bool adjoint, Vec3f* throughputDiffuse, Vec3f* throughputSpecular, float* pDensity, bool *outside, ShaderEvalFlag evalFlag);
+  SampleResult sample(RNG& rng, const SurfaceInteraction& interaction, const LightRayInfo& lightRay, const Vec3f& wOut, OutsideIORFunctor getOutsideIOR, bool adjoint, ShaderEvalFlag evalFlag);
   Vec3f sampleSpecular(RNG& rng, const SurfaceInteraction& interaction, LightRayInfo& lightRay, const Vec3f& wOut, OutsideIORFunctor getOutsideIOR, bool adjoint, Vec3f* throughputDiffuse, Vec3f* throughputSpecular, float* pDensity, bool *outside);
   float evaluateSamplePDF(const SurfaceInteraction &interaction, const Vec3f& wo, const Vec3f& wi);
   bool hasDiffuseLobe(const SurfaceInteraction& interaction);
@@ -118,8 +133,8 @@ public:
   float computeAlpha(float roughness);
   void computeProbability(float metallicHit, float* diffSpecMix, float* pProbablitySpec);
   MaterialEvalResult evaluate(const SurfaceInteraction& interaction, const Vec3f& wo, const Vec3f& wi, float indexOfRefractionOutside, bool adjoint, ShaderEvalFlag evalFlag);
-  Vec3f sample(RNG& rng, const SurfaceInteraction& interaction, LightRayInfo& lightRay, const Vec3f& wOut, OutsideIORFunctor getOutsideIOR, bool adjoint, Vec3f* throughputDiffuse, Vec3f* throughputSpecular, float* pDensity, bool *outside, ShaderEvalFlag evalFlag);
-  Vec3f sampleSpecular(RNG& rng, const SurfaceInteraction& interaction, LightRayInfo& lightRay, const Vec3f& wOut, OutsideIORFunctor getOutsideIOR, bool adjoint, Vec3f* throughputDiffuse, Vec3f* throughputSpecular, float* pDensity, bool *outside);
+  SampleResult sample(RNG& rng, const SurfaceInteraction& interaction, const LightRayInfo& lightRay, const Vec3f& wOut, OutsideIORFunctor getOutsideIOR, bool adjoint, ShaderEvalFlag evalFlag);
+  Vec3f sampleSpecular(RNG& rng, const SurfaceInteraction& interaction, const LightRayInfo& lightRay, const Vec3f& wOut, OutsideIORFunctor getOutsideIOR, bool adjoint, Vec3f* throughputDiffuse, Vec3f* throughputSpecular, float* pDensity, bool *outside);
   float evaluateSamplePDF(const SurfaceInteraction &interaction, const Vec3f& wo, const Vec3f& wi);
   bool hasDiffuseLobe(const SurfaceInteraction& interaction);
 private:

@@ -59,11 +59,10 @@ Vec3f estimateRadiance(RenderContext context, LightRayInfo& lightRay, const Ray&
 
     for (int strategy = 0; strategy < numStrategies; strategy++)
     {
-      LightRayInfo lightRay2 = lightRay;
-      SampleResult sampleResult = strategies.sample(context, lightRay2, ray, rayhit, strategy);
+      MISSampleResult sampleResult = strategies.sample(context, lightRay, ray, rayhit, strategy);
       pdfs[strategy] = sampleResult.pdfOmega;
       Vec3f throughput2 = throughput.cwiseProd(sampleResult.throughput());
-      lightRay2.applyWavelength(throughput2);
+      sampleResult.lightRay.applyWavelength(throughput2);
 
       if (throughput2 == Vec3f::Zero() || isSelfIntersection(rayhit, sampleResult.rayhit)) continue;
 
@@ -76,10 +75,10 @@ Vec3f estimateRadiance(RenderContext context, LightRayInfo& lightRay, const Ray&
 
       throughput2 *= msiWeight;
 
-      lightRay2.updateMedia(context, rayhit, sampleResult.ray.direction());
+      sampleResult.lightRay.updateMedia(context, rayhit, sampleResult.ray.direction());
 
       Vec3f normal2, albedo2;
-      Vec3f Li = estimateRadiance(context, lightRay2, sampleResult.ray, normal2, albedo2, depth + 1, &sampleResult.rayhit);
+      Vec3f Li = estimateRadiance(context, sampleResult.lightRay, sampleResult.ray, normal2, albedo2, depth + 1, &sampleResult.rayhit);
       estimator += Li.cwiseProd(throughput2);
     }
 
