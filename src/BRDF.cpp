@@ -497,26 +497,30 @@ MaterialEvalResult PrincipledBRDF::evaluate(const SurfaceInteraction& interactio
     Vec3f FH = F0 + (Vec3f::Ones() - F0) * powci<5>(1.0f - lh); // here if we are at a grazing angle, we  remove some F0, and add some "achromatic" reflectance (Vec3f::ones)
 
     float nh = normalShading.dot(h);
-    float D_ggx = DGGX(nh, alpha);
 
     float nv = std::abs(normalShading.dot(wo));
     float nl = std::abs(normalShading.dot(wi));
     float G2 = 2.0f * (nv * nl) / ( 1e-7f +  nv * std::sqrt(alpha * alpha + (1.0f - alpha * alpha) * nl * nl) + nl * std::sqrt(alpha * alpha + (1.0f - alpha * alpha) * nv * nv));
+    
+    float D_ggx = DGGX(nh, alpha);
+
     if (alpha == 0.0f)
     {
       if (std::abs(std::abs(nh) - 1.0f) < 1e-6f) // D_GGX explodes for alpha= 0 and nh = 1, but we know that the integral of D should be 1, it acts as a dirac distribution, and D is zero when nh != 1
       {
-        result.fSpecular = FH * (G2 * normalScale / std::abs(1e-7f + 4.0f * normalShading.dot(wo) * normalShading.dot(wi)));
+        D_ggx = 1.0f;
       }
       else
       {
-        result.fSpecular = Vec3f::Zero();
+        D_ggx = 0.0f;
       }
     }
     else
     {
-      result.fSpecular = FH * (D_ggx * G2 * normalScale / std::abs(1e-7f + 4.0f * normalShading.dot(wo) * normalShading.dot(wi)) * (1.0f - diffuseSpecMix));
+      D_ggx = DGGX(nh, alpha);
     }
+
+    result.fSpecular = FH * (D_ggx * G2 * normalScale / std::abs(1e-7f + 4.0f * normalShading.dot(wo) * normalShading.dot(wi)) * (1.0f - diffuseSpecMix));
   }
   assertFinite(result.fDiffuse);
   assertFinite(result.fSpecular);
