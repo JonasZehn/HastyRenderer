@@ -116,7 +116,7 @@ Scene::Scene(std::filesystem::path inputfilePath)
         metallicTexture = std::make_unique<ConstantTexture1f>(metallic);
       }
 
-      m_brdfs.emplace_back(std::make_unique<PrincipledBRDF>(std::move(albedoTexture), std::move(roughnessTexture) , std::move(metallicTexture), material.specular[0], material.ior, std::move(normalMap)));
+      m_brdfs.emplace_back(std::make_unique<PrincipledBRDF>(std::move(albedoTexture), std::move(roughnessTexture) , std::move(metallicTexture), material.specular[0], material.ior, std::move(normalMap), material.anisotropy));
     }
   }
 
@@ -248,13 +248,11 @@ SurfaceInteraction Scene::getInteraction(unsigned int geomID, unsigned int primI
   {
     std::array<Vec2f, 3>& uv = uvOptional.value();
     interaction.uv = uv[0] * barycentricCoordinates[0] + uv[1] * barycentricCoordinates[1] + uv[2] * barycentricCoordinates[2];
-    Vec3f dpdu, dpdv;
-    computeUVMapTriangleDerivative(xv, uv, dpdu, dpdv);
-    interaction.tangent = dpdu.normalized();
-    interaction.bitangent = dpdv.normalized();
-    orthonormalize(interaction.tangent, interaction.bitangent);
   }
 
+  interaction.tangent = Vec3f(-interaction.x[2], 0.0f, interaction.x[0]);
+  interaction.tangent = orthonormalized(interaction.normalGeometric, interaction.tangent);
+  interaction.bitangent = interaction.normalGeometric.cross(interaction.tangent);
 
   return interaction;
 }

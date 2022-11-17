@@ -138,7 +138,19 @@ float SmithIsotropicGGXShadowing(float alpha, float vsq, float vn)
   float lambda = (std::sqrt(1.0f + alpha * alpha * (vsq / (vn * vn) - 1.0f)) - 1.0f) * 0.5f;
   return 1.0f / (1.0f + lambda);
 }
-Vec3f sampleGGXVNDFGlobal(RNG& rng, const Vec3f& normal, float alpha, const Vec3f& dir1, float* pDensity)
+
+float DGGX(float nh, float th, float bh, float alpha_t, float alpha_b)
+{
+  float D = float(Hasty::InvPi) / (alpha_t * alpha_b * Hasty::square(Hasty::square(th / alpha_t) + Hasty::square(bh / alpha_b) + Hasty::square(nh)));
+  return D;
+}
+// "glass ground unknown"
+float smithGGX(float nv, float tv, float bv, float alpha_t, float alpha_b)
+{
+  float lambda = 0.5f * ( std::sqrt(1.0f + (square(alpha_t * tv) +square(alpha_b * bv))/square(nv))  - 1.0f);
+  return 1.0f / (1.0f + lambda);
+}
+Vec3f sampleGGXVNDFGlobal(RNG& rng, const Vec3f& normal, float alpha_t, float alpha_b, const Vec3f& tangent, const Vec3f& bitangent, const Vec3f& dir1, float* pDensity)
 {
   if (dir1.dot(normal) <= 0.0f)
   {
@@ -150,25 +162,23 @@ Vec3f sampleGGXVNDFGlobal(RNG& rng, const Vec3f& normal, float alpha, const Vec3
   Vec3f NeGlobal;
   do
   {
-    RodriguesRotation<float, Vec3f> rotation(Vec3f(0.0f, 0.0f, 1.0f), normal);
+    Vec3f Ve(tangent.dot(dir1), bitangent.dot(dir1), normal.dot(dir1));
+    Vec3f Ne = sampleGGXVNDF(Ve, alpha_t, alpha_b, rng.uniform01f(), rng.uniform01f());
 
-    Vec3f Ve = rotation.applyInverse(dir1);
-    Vec3f Ne = sampleGGXVNDF(Ve, alpha, alpha, rng.uniform01f(), rng.uniform01f());
-
-    NeGlobal = rotation * Ne;
+    NeGlobal = tangent * Ne[0] + bitangent * Ne[1] + normal * Ne[2];
     NeGlobal.normalize();
   } while (NeGlobal.dot(dir1) <= 0.0f);
 
   Vec3f dir2 = reflectAcross(dir1, NeGlobal);
   dir2.normalize();
   // V = dir1, N = H
-  float G1 = SmithIsotropicGGXShadowing(alpha, dir1.normSq(), dir1.dot(normal));
-  //assert(dir1.dot(NeGlobal) >= 0.0f);
-  float pDensityH = G1 * dir1.dot(NeGlobal) * DGGX(normal.dot(NeGlobal), alpha) / dir1.dot(normal);
+  float G1 = smithGGX(normal.dot(dir1), tangent.dot(dir1), bitangent.dot(dir1), alpha_t, alpha_b);
+  float D_ggx = DGGX(normal.dot(NeGlobal), tangent.dot(NeGlobal), bitangent.dot(NeGlobal), alpha_t, alpha_b);
+  float pDensityH = G1 * dir1.dot(NeGlobal) * D_ggx / dir1.dot(normal);
   (*pDensity) = pDensityH / (1e-7f + 4.0f * std::abs(dir1.dot(NeGlobal)));
   return dir2;
 }
-float sampleGGXVNDFGlobalDensity(const Vec3f& normal, float alpha, const Vec3f& dir1, const Vec3f& dir2)
+float sampleGGXVNDFGlobalDensity(const Vec3f& normal, float alpha_t, float alpha_b, const Vec3f& tangent, const Vec3f& bitangent, const Vec3f& dir1, const Vec3f& dir2)
 {
   if (dir1.dot(normal) <= 0.0f)
   {
@@ -176,8 +186,9 @@ float sampleGGXVNDFGlobalDensity(const Vec3f& normal, float alpha, const Vec3f& 
     return 0.0f;
   }
   Vec3f NeGlobal = (dir1 + dir2).normalized();
-  float G1 = SmithIsotropicGGXShadowing(alpha, dir1.normSq(), dir1.dot(normal));
-  float pDensityH = G1 * std::max(0.0f, dir1.dot(NeGlobal)) * DGGX(normal.dot(NeGlobal), alpha) / dir1.dot(normal);
+  float G1 = smithGGX(normal.dot(dir1), tangent.dot(dir1), bitangent.dot(dir1), alpha_t, alpha_b);
+  float D_ggx = DGGX(normal.dot(NeGlobal), tangent.dot(NeGlobal), bitangent.dot(NeGlobal), alpha_t, alpha_b);
+  float pDensityH = G1 * std::max(0.0f, dir1.dot(NeGlobal)) * D_ggx / dir1.dot(normal);
   return pDensityH / (1e-7f + 4.0f * std::abs(dir1.dot(NeGlobal)));
 }
 
@@ -403,8 +414,8 @@ float GlassBTDF::getIndexOfRefraction(int wavelength) const
 }
 
 
-PrincipledBRDF::PrincipledBRDF(std::unique_ptr<ITextureMap3f> albedo, std::unique_ptr<ITextureMap1f> roughness, std::unique_ptr<ITextureMap1f> metallic, float specular, float indexOfRefraction, std::unique_ptr<ITextureMap3f> normalMap)
-  :albedo(std::move(albedo)), roughness(std::move(roughness)), metallic(std::move(metallic)), specular(specular), IOR(indexOfRefraction), normalMap(std::move(normalMap))
+PrincipledBRDF::PrincipledBRDF(std::unique_ptr<ITextureMap3f> albedo, std::unique_ptr<ITextureMap1f> roughness, std::unique_ptr<ITextureMap1f> metallic, float specular, float indexOfRefraction, std::unique_ptr<ITextureMap3f> normalMap, float anisotropy)
+  :albedo(std::move(albedo)), roughness(std::move(roughness)), metallic(std::move(metallic)), specular(specular), IOR(indexOfRefraction), normalMap(std::move(normalMap)), anisotropy(anisotropy)
 {
 }
 PrincipledBRDF::~PrincipledBRDF()
@@ -450,6 +461,16 @@ void PrincipledBRDF::computeProbability(float metallicHit, float* diffSpecMix, f
   *diffSpecMix = std::min(1.0f - metallicHit, 1.0f - 0.5f * specular); // we want this to be zero when metallic and one when specular = 0
   *pProbablitySpec = 1.0f - *diffSpecMix;
 }
+void PrincipledBRDF::computeAnisotropyParameters(const SurfaceInteraction &interaction, const Vec3f& normalShading, float alpha, float &alpha_t, float &alpha_b, Vec3f &tangent, Vec3f &bitangent)
+{
+  float aspect = std::sqrt(1.0f - 0.9f * anisotropy);
+  alpha_t = alpha / aspect;
+  alpha_b = alpha * aspect;
+  RodriguesRotation<float, Vec3f> rotation(interaction.normalGeometric, normalShading);
+  tangent = rotation * interaction.tangent;
+  bitangent = rotation * interaction.bitangent;
+}
+
 MaterialEvalResult PrincipledBRDF::evaluate(const SurfaceInteraction& interaction, const Vec3f& wo, const Vec3f& wi, float indexOfRefractionOutside, bool adjoint, ShaderEvalFlag evalFlag)
 {
   // There are two things to consider: leakage which we are trying to prevent with the statement above
@@ -497,18 +518,27 @@ MaterialEvalResult PrincipledBRDF::evaluate(const SurfaceInteraction& interactio
     Vec3f FH = F0 + (Vec3f::Ones() - F0) * powci<5>(1.0f - lh); // here if we are at a grazing angle, we  remove some F0, and add some "achromatic" reflectance (Vec3f::ones)
 
     float nh = normalShading.dot(h);
+    
+    float alpha_t, alpha_b;
+    Vec3f tangent, bitangent;
+    computeAnisotropyParameters(interaction, normalShading, alpha, alpha_t, alpha_b, tangent, bitangent);
 
     float nv = std::abs(normalShading.dot(wo));
     float nl = std::abs(normalShading.dot(wi));
-    float G2 = 2.0f * (nv * nl) / ( 1e-7f +  nv * std::sqrt(alpha * alpha + (1.0f - alpha * alpha) * nl * nl) + nl * std::sqrt(alpha * alpha + (1.0f - alpha * alpha) * nv * nv));
+    float Go = smithGGX(nv, tangent.dot(wo), bitangent.dot(wo), alpha_t, alpha_b);
+    float Gi = smithGGX(nl, tangent.dot(wi), bitangent.dot(wi), alpha_t, alpha_b);
+    float G = Go * Gi;
     
-    float D_ggx = DGGX(nh, alpha);
+    float D_ggx;
 
     if (alpha == 0.0f)
     {
-      if (std::abs(std::abs(nh) - 1.0f) < 1e-6f) // D_GGX explodes for alpha= 0 and nh = 1, but we know that the integral of D should be 1, it acts as a dirac distribution, and D is zero when nh != 1
+      if (std::abs(std::abs(nh) - 1.0f) < 1e-3f) // D_GGX explodes for alpha= 0 and nh = 1
       {
-        D_ggx = 1.0f;
+        // we can find this by using importance sample formula and then let alpha go to zero?, G is always 1 in that case
+        // => \int F D G/ (4 nv nl) dl ~= 1/N \sum_i  F D Gi Go/ (4 nv nl_i  p(l_i) )
+        //           ~= 1/N \sum_i  F / nv ~=   F / nv for alpha = 0
+        D_ggx = 4.0f * nl;
       }
       else
       {
@@ -517,10 +547,10 @@ MaterialEvalResult PrincipledBRDF::evaluate(const SurfaceInteraction& interactio
     }
     else
     {
-      D_ggx = DGGX(nh, alpha);
+      D_ggx = DGGX(nh, tangent.dot(h), bitangent.dot(h), alpha_t, alpha_b);
     }
 
-    result.fSpecular = FH * (D_ggx * G2 * normalScale / std::abs(1e-7f + 4.0f * normalShading.dot(wo) * normalShading.dot(wi)) * (1.0f - diffuseSpecMix));
+    result.fSpecular = FH * (D_ggx * G * normalScale / std::abs(1e-7f + 4.0f * nv * nl) * (1.0f - diffuseSpecMix));
   }
   assertFinite(result.fDiffuse);
   assertFinite(result.fSpecular);
@@ -629,7 +659,10 @@ SampleResult PrincipledBRDF::sample(RNG& rng, const SurfaceInteraction& interact
     }
     else
     {
-      float pdfSpec = sampleGGXVNDFGlobalDensity(normalShading, alpha, wOut, result.direction);
+      float alpha_t, alpha_b;
+      Vec3f tangent, bitangent;
+      computeAnisotropyParameters(interaction, normalShading, alpha, alpha_t, alpha_b, tangent, bitangent);
+      float pdfSpec = sampleGGXVNDFGlobalDensity(normalShading, alpha_t, alpha_b, tangent, bitangent, wOut, result.direction);
       result.pdfOmega = pSpecularStrategy * pdfSpec + (1.0f - pSpecularStrategy) * pdfDiffuse;
       if (result.pdfOmega == 0.0f) { std::cout << "error3 density 0 " << pSpecularStrategy << ' ' << pdfSpec << ' ' << pdfDiffuse << std::endl; }
       MaterialEvalResult evalResult = this->evaluate(interaction, wOut, result.direction, outsideIOR, adjoint, ShaderEvalFlag::ALL);
@@ -685,7 +718,10 @@ Vec3f PrincipledBRDF::sampleSpecular(RNG& rng, const SurfaceInteraction& interac
   }
   else
   {
-    Vec3f direction2 = sampleGGXVNDFGlobal(rng, normalShading, alpha, wOut, pDensity);
+    float alpha_t, alpha_b;
+    Vec3f tangent, bitangent;
+    computeAnisotropyParameters(interaction, normalShading, alpha, alpha_t, alpha_b, tangent, bitangent);
+    Vec3f direction2 = sampleGGXVNDFGlobal(rng, normalShading, alpha_t, alpha_b, tangent, bitangent, wOut, pDensity);
     MaterialEvalResult evalResult = this->evaluate(interaction, wOut, direction2, outsideIOR, adjoint, ShaderEvalFlag::SPECULAR);
     float mp = cosTerm(wOut, direction2, interaction.normalGeometric, normalShading, adjoint) / (*pDensity);
     (*throughputDiffuse) = evalResult.fDiffuse * mp;
@@ -722,7 +758,10 @@ float PrincipledBRDF::evaluateSamplePDF(const SurfaceInteraction &interaction, c
   }
   else
   {
-    float pdfSpec = sampleGGXVNDFGlobalDensity(normalShading, alpha, wo, wi);
+    float alpha_t, alpha_b;
+    Vec3f tangent, bitangent;
+    computeAnisotropyParameters(interaction, normalShading, alpha, alpha_t, alpha_b, tangent, bitangent);
+    float pdfSpec = sampleGGXVNDFGlobalDensity(normalShading, alpha_t, alpha_b, tangent, bitangent, wo, wi);
     float pdfDiffuse = evaluateHemisphereCosImportancePDF(normalShading, wi);
     float samplePd = pSpecularStrategy * pdfSpec + (1.0f - pSpecularStrategy) * pdfDiffuse;
     assertFinite(samplePd);

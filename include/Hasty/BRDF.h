@@ -23,11 +23,6 @@ float fresnelDielectric(float cos_i, float cos_t, float indexOfRefraction_i, flo
 Vec3f sampleDGGX(RNG& rng, const Vec3f& normal, float alpha, const Vec3f& dir1, float* pDensity);
 float sampleDGGXDensity(const Vec3f& normal, float alpha, const Vec3f& dir1, const Vec3f& dir2);
 
-float DGGX(float nh, float alpha);
-
-Vec3f sampleGGXVNDFGlobal(RNG& rng, const Vec3f& normal, float alpha, const Vec3f& dir1, float* pDensity);
-float sampleGGXVNDFGlobalDensity(const Vec3f& normal, float alpha, const Vec3f& dir1, const Vec3f& dir2);
-
 enum class ShaderEvalFlag
 {
   NONE = 0,
@@ -123,7 +118,7 @@ class PrincipledBRDF final : public BXDF
 {
 public:
 
-  PrincipledBRDF(std::unique_ptr<ITextureMap3f> albedo, std::unique_ptr<ITextureMap1f> roughness, std::unique_ptr<ITextureMap1f> metallic, float specular, float indexOfRefraction, std::unique_ptr<ITextureMap3f> normalMap);
+  PrincipledBRDF(std::unique_ptr<ITextureMap3f> albedo, std::unique_ptr<ITextureMap1f> roughness, std::unique_ptr<ITextureMap1f> metallic, float specular, float indexOfRefraction, std::unique_ptr<ITextureMap3f> normalMap, float anisotropy);
   ~PrincipledBRDF();
 
   float getIndexOfRefraction(int wavelength) const { return 1.0f; }
@@ -132,6 +127,7 @@ public:
   Vec3f getShadingNormal(const SurfaceInteraction& interaction, const Vec3f& wo);
   float computeAlpha(float roughness);
   void computeProbability(float metallicHit, float* diffSpecMix, float* pProbablitySpec);
+  void computeAnisotropyParameters(const SurfaceInteraction& interaction, const Vec3f& normalShading, float alpha, float &alpha_t, float &alpha_b, Vec3f& tangent, Vec3f& bitangent);
   MaterialEvalResult evaluate(const SurfaceInteraction& interaction, const Vec3f& wo, const Vec3f& wi, float indexOfRefractionOutside, bool adjoint, ShaderEvalFlag evalFlag);
   SampleResult sample(RNG& rng, const SurfaceInteraction& interaction, const LightRayInfo& lightRay, const Vec3f& wOut, OutsideIORFunctor getOutsideIOR, bool adjoint, ShaderEvalFlag evalFlag);
   Vec3f sampleSpecular(RNG& rng, const SurfaceInteraction& interaction, const LightRayInfo& lightRay, const Vec3f& wOut, OutsideIORFunctor getOutsideIOR, bool adjoint, Vec3f* throughputDiffuse, Vec3f* throughputSpecular, float* pDensity, bool *outside);
@@ -144,6 +140,7 @@ private:
   float specular;
   float IOR;
   std::unique_ptr<ITextureMap3f> normalMap;
+  float anisotropy;
 };
 
 }
