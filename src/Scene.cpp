@@ -251,7 +251,7 @@ SurfaceInteraction Scene::getInteraction(unsigned int geomID, unsigned int primI
   }
 
   interaction.tangent = Vec3f(-interaction.x[2], 0.0f, interaction.x[0]);
-  interaction.tangent = orthonormalized(interaction.normalGeometric, interaction.tangent);
+  interaction.tangent = orthonormalizedOtherwiseAnyOrthogonal(interaction.normalGeometric, interaction.tangent);
   interaction.bitangent = interaction.normalGeometric.cross(interaction.tangent);
 
   return interaction;

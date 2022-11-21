@@ -453,10 +453,19 @@ private:
   std::array<float, 4> m_data;
 };
 
-inline Vec3f orthonormalized(const Vec3f& v1Normalized, const Vec3f& v2);
+inline Vec3f orthonormalized(const Vec3f& v1Normalized, const Vec3f& v2)
+{
+  assertUnitLength(v1Normalized);
+  Vec3f result = v2 - v2.dot(v1Normalized) * v1Normalized;
+  float length = result.norm();
+  assert(length != 0.0f);
+  result /= length;
+  return result;
+}
 
 inline Vec3f anyOrthogonal(const Vec3f& v1Normalized)
 {
+  assertUnitLength(v1Normalized);
   if (v1Normalized[0] < 0.7f)
   {
     return orthonormalized(v1Normalized, Vec3f(1.0f, 0.0f, 0.0f));
@@ -467,11 +476,12 @@ inline Vec3f anyOrthogonal(const Vec3f& v1Normalized)
   }
 }
 
-inline Vec3f orthonormalized(const Vec3f& v1Normalized, const Vec3f& v2)
+inline Vec3f orthonormalizedOtherwiseAnyOrthogonal(const Vec3f& v1Normalized, const Vec3f& v2)
 {
+  assertUnitLength(v1Normalized);
   Vec3f result = v2 - v2.dot(v1Normalized) * v1Normalized;
   float length = result.norm();
-  if (length < 1e-5f)
+  if (length < 1e-7f)
   {
     result = anyOrthogonal(v1Normalized);
   }
