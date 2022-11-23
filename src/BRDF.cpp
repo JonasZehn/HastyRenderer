@@ -76,7 +76,7 @@ Vec3f sampleDGGX(RNG& rng, const Vec3f& normal, float alpha, const Vec3f& dir1, 
     float sinphi = std::sin(phi); // you cannot use sqrt(1 - cosphi*cosphi) here you are gonna loose the sign
     Vec3f rv(sintheta * cosphi, sintheta * sinphi, costheta);
 
-    RodriguesRotation<float, Vec3f> rotation(Vec3f(0.0f, 0.0f, 1.0f), normal);
+    RotationBetweenTwoVectors<float, Vec3f> rotation(Vec3f(0.0f, 0.0f, 1.0f), normal);
     h = rotation * rv;
     h.normalize();
   } while (h.dot(normal) <= 0.0f);
@@ -466,7 +466,7 @@ void PrincipledBRDF::computeAnisotropyParameters(const SurfaceInteraction &inter
   float aspect = std::sqrt(1.0f - 0.9f * anisotropy);
   alpha_t = alpha / aspect;
   alpha_b = alpha * aspect;
-  RodriguesRotation<float, Vec3f> rotation(interaction.normalGeometric, normalShading);
+  RotationBetweenTwoVectors<float, Vec3f> rotation(interaction.normalGeometric, normalShading);
   tangent = rotation * interaction.tangent;
   bitangent = rotation * interaction.bitangent;
 }

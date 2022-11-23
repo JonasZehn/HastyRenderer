@@ -492,47 +492,80 @@ inline Vec3f orthonormalizedOtherwiseAnyOrthogonal(const Vec3f& v1Normalized, co
   return result;
 }
 
+struct templateDummyType {};
+
+template<typename T>
+inline T zero()
+{
+  static_assert(!std::is_same<T, templateDummyType>::value, "this function is not supposed to work, see other specializations");
+}
+
+template <>
+inline float zero()
+{
+  return 0.0f;
+}
+template <>
+inline Vec2f zero()
+{
+  return Vec2f::Zero();
+}
+template <>
+inline Vec3f zero()
+{
+  return Vec3f::Zero();
+}
+template <>
+inline Vec4f zero()
+{
+  return Vec4f::Zero();
+}
+
+
 template<class ScalarType, class VectorType>
-class RodriguesRotation
+class RotationBetweenTwoVectors
 {
 public:
 
-  RodriguesRotation(const VectorType& vFrom, const VectorType& vTo)
+  RotationBetweenTwoVectors(const VectorType& vFrom, const VectorType& vTo)
   {
     assertUnitLength(vFrom);
     assertUnitLength(vTo);
-    cosAngle = vFrom.dot(vTo);
-    kSinAngle = vFrom.cross(vTo);
+    ScalarType cosAngle = vFrom.dot(vTo);
+    ScalarType onePlusCosAngle = ScalarType(1.0) + cosAngle;
+    if (std::abs(onePlusCosAngle) > std::numeric_limits<ScalarType>::epsilon())
+    {
+      // v_rot = x * cos(angle) + (k sin(angle) cross x + (k sin(angle) )  ( (k sin(angle) ) dot x ) / (1 + cos(angle))
+      VectorType kSinAngle = vFrom.cross(vTo);
+      a = cosAngle;
+      b = kSinAngle;
+      c = kSinAngle;
+      d = kSinAngle / onePlusCosAngle;
+    }
+    else
+    {
+      VectorType k = anyOrthogonal(vFrom); // find rotation axis so we don't invert volume
+      a = ScalarType(-1.0);
+      b = zero<VectorType>();
+      c = k;
+      d = k * ScalarType(2.0); // k* (ScalarType(1.0) - cosAngle);
+    }
   }
   
   VectorType operator*(const VectorType& x) const
   {
-    if (std::abs(cosAngle - ScalarType(-1) ) > std::numeric_limits<ScalarType>::epsilon())
-    {
-      return x * cosAngle + kSinAngle.cross(x) + kSinAngle * (kSinAngle.dot(x) / (ScalarType(1.0) + cosAngle));
-    }
-    else
-    {
-      return -x;
-    }
+    return x * a + b.cross(x) + c * d.dot(x);
   }
   VectorType applyInverse(const VectorType& x) const
   {
-    // we can just exchange vfrom and vto
-    // the dot product is the same in the opposite direction, and opposite cross product is just the negative, so we use the negative of k
-    if (std::abs(cosAngle - ScalarType(-1) ) > std::numeric_limits<ScalarType>::epsilon())
-    {
-      return x * cosAngle - kSinAngle.cross(x) + kSinAngle * (kSinAngle.dot(x) / (ScalarType(1.0) + cosAngle));
-    }
-    else
-    {
-      return -x;
-    }
+    return x * a - b.cross(x) + c * d.dot(x);
   }
 
 private:
-  ScalarType cosAngle;
-  VectorType kSinAngle;
+  ScalarType a;
+  VectorType b;
+  VectorType c;
+  VectorType d;
 };
 
 class Ray

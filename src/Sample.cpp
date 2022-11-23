@@ -97,7 +97,7 @@ Vec3f sampleHemisphereCosImportance(RNG& rng, const Vec3f& normal, float* pDensi
     float sinphi = std::sin(phi); // you cannot use sqrt(1 - cosphi*cosphi) here you are gonna loose the sign
     Vec3f rv(sintheta * cosphi, sintheta * sinphi, costheta);
 
-    RodriguesRotation<float, Vec3f> rotation(Vec3f(0.0f, 0.0f, 1.0f), normal);
+    RotationBetweenTwoVectors<float, Vec3f> rotation(Vec3f(0.0f, 0.0f, 1.0f), normal);
     dir = rotation * rv;
     dir.normalize();
     costheta = dir.dot(normal);
@@ -137,7 +137,7 @@ Vec3f sampleCosineLobe(RNG& rng, const Vec3f& lobeDirection, float exponent, flo
     float sinphi = std::sin(phi); // you cannot use sqrt(1 - cosphi*cosphi) here you are gonna loose the sign
     Vec3f rv(sintheta * cosphi, sintheta * sinphi, costheta);
 
-    RodriguesRotation<float, Vec3f> rotation(Vec3f(0.0f, 0.0f, 1.0f), lobeDirection);
+    RotationBetweenTwoVectors<float, Vec3f> rotation(Vec3f(0.0f, 0.0f, 1.0f), lobeDirection);
     dir = rotation * rv;
     dir.normalize();
     costheta = dir.dot(lobeDirection);

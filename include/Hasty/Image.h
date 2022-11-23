@@ -158,19 +158,6 @@ protected:
 };
 
 
-struct templateDummyType {};
-
-template<typename T>
-inline T zero()
-{
-  static_assert(!std::is_same<T, templateDummyType>::value, "this function is not supposed to work, see other specializations");
-}
-
-template <>
-inline float zero()
-{
-  return 0.0f;
-}
 
 template<int W, int H, typename _PixelType>
 Image<_PixelType> runSmallFilter(const Image<_PixelType> &image, const std::array<float, W * H>& kernel)
