@@ -42,7 +42,7 @@ TEST(vmath, rodriguesRotation)
   RNG rng(0);
 
   float pDensity;
-  RodriguesRotation<float, Vec3f> rot(sampleSphereSurfaceUniformly(rng, &pDensity), sampleSphereSurfaceUniformly(rng, &pDensity));
+  RotationBetweenTwoVectors<float, Vec3f> rot(sampleSphereSurfaceUniformly(rng, &pDensity), sampleSphereSurfaceUniformly(rng, &pDensity));
   Vec3f x0 = rng.uniform01Vec3f();
   Vec3f x1 = rot * x0;
   Vec3f x0prime = rot.applyInverse(x1);
@@ -115,11 +115,13 @@ TEST(brdf, DGGX)
   float pDensity;
   Vec3f normal = sampleSphereSurfaceUniformly(rng, &pDensity);
   Vec3f wo = sampleHemisphereSurfaceUniformly(rng, normal, &pDensity);
+  Vec3f tangent = anyOrthonormal(normal);
+  Vec3f bitangent = normal.cross(tangent);
   for (int i = 0; i < n; i++)
   {
     //Vec3f wi = sampleGGXVNDFGlobal(rng, normal, alpha, wo, &pDensity);
     wo = sampleHemisphereSurfaceUniformly(rng, normal, &pDensity);
-    float d = DGGX(normal.dot(wo), alpha);
+    float d = DGGX(normal.dot(wo), tangent.dot(wo), bitangent.dot(wo), alpha, alpha);
     EXPECT_TRUE(d >= 0.0f);
     sum += d * normal.dot(wo) / pDensity;
   }
@@ -174,14 +176,12 @@ TEST(brdf, sampleGGXVNDFGlobal)
     float pDensity;
     Vec3f normal = sampleSphereSurfaceUniformly(rng, &pDensity);
     Vec3f wo = sampleHemisphereSurfaceUniformly(rng, normal, &pDensity);
-    if (i == 19)
-    {
-      int kdfkj = 3;
-    }
-    Vec3f wi = sampleGGXVNDFGlobal(rng, normal, alpha, wo, &pDensity);
+    Vec3f tangent = anyOrthonormal(normal);
+    Vec3f bitangent = normal.cross(tangent);
+    Vec3f wi = sampleGGXVNDFGlobal(rng, normal, alpha, alpha, tangent, bitangent, wo, &pDensity);
     EXPECT_TRUE(pDensity >= 0.0f);
     EXPECT_NEARREL(wi.norm(), 1.0f, 1e-4f);
-    float pDensity2 = sampleGGXVNDFGlobalDensity(normal, alpha, wo, wi);
+    float pDensity2 = sampleGGXVNDFGlobalDensity(normal, alpha, alpha, tangent, bitangent, wo, wi);
     EXPECT_NEARREL(pDensity, pDensity2, 1e-2f );
   }
 }
@@ -199,7 +199,9 @@ TEST(brdf, sampleGGXVNDFGlobal2)
   float n = 5000000;
   for (int i = 0; i < n; i++)
   {
-    Vec3f wi = sampleGGXVNDFGlobal(rng, normal, alpha, wo, &pDensity);
+    Vec3f tangent = anyOrthonormal(normal);
+    Vec3f bitangent = normal.cross(tangent);
+    Vec3f wi = sampleGGXVNDFGlobal(rng, normal, alpha, alpha, tangent, bitangent, wo, &pDensity);
     EXPECT_TRUE(pDensity >= 0.0f);
     sum += std::max(0.0f, normal.dot(wi)) / pDensity;
   }

@@ -463,7 +463,7 @@ inline Vec3f orthonormalized(const Vec3f& v1Normalized, const Vec3f& v2)
   return result;
 }
 
-inline Vec3f anyOrthogonal(const Vec3f& v1Normalized)
+inline Vec3f anyOrthonormal(const Vec3f& v1Normalized)
 {
   assertUnitLength(v1Normalized);
   if (v1Normalized[0] < 0.7f)
@@ -483,7 +483,7 @@ inline Vec3f orthonormalizedOtherwiseAnyOrthogonal(const Vec3f& v1Normalized, co
   float length = result.norm();
   if (length < 1e-7f)
   {
-    result = anyOrthogonal(v1Normalized);
+    result = anyOrthonormal(v1Normalized);
   }
   else
   {
@@ -544,7 +544,7 @@ public:
     }
     else
     {
-      VectorType k = anyOrthogonal(vFrom); // find rotation axis so we don't invert volume
+      VectorType k = anyOrthonormal(vFrom); // find rotation axis so we don't invert volume
       a = ScalarType(-1.0);
       b = zero<VectorType>();
       c = k;

@@ -23,6 +23,11 @@ float fresnelDielectric(float cos_i, float cos_t, float indexOfRefraction_i, flo
 Vec3f sampleDGGX(RNG& rng, const Vec3f& normal, float alpha, const Vec3f& dir1, float* pDensity);
 float sampleDGGXDensity(const Vec3f& normal, float alpha, const Vec3f& dir1, const Vec3f& dir2);
 
+float DGGX(float nh, float th, float bh, float alpha_t, float alpha_b);
+
+Vec3f sampleGGXVNDFGlobal(RNG& rng, const Vec3f& normal, float alpha_t, float alpha_b, const Vec3f& tangent, const Vec3f& bitangent, const Vec3f& dir1, float* pDensity);
+float sampleGGXVNDFGlobalDensity(const Vec3f& normal, float alpha_t, float alpha_b, const Vec3f& tangent, const Vec3f& bitangent, const Vec3f& dir1, const Vec3f& dir2);
+
 enum class ShaderEvalFlag
 {
   NONE = 0,
