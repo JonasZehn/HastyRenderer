@@ -7,6 +7,8 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
 set (CMAKE_CXX_STANDARD 17)
 
+find_package(Vulkan REQUIRED)
+
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(tinyobjloader CONFIG REQUIRED)
 find_package(embree 3 CONFIG REQUIRED)
@@ -70,3 +72,7 @@ target_link_libraries(
         benchmark::benchmark_main)
 target_compile_definitions(HastyBenchmarks PUBLIC BENCHMARK_STATIC_DEFINE=1)
 
+add_executable(VulkanPrototype "apps/VulkanPrototype.cpp")
+target_link_libraries(VulkanPrototype PUBLIC libHastyRendererViewer Vulkan::Vulkan)
+target_include_directories(VulkanPrototype PRIVATE ${VULKAN_HPP_INCLUDE_DIRS})
+target_include_directories(VulkanPrototype PRIVATE ${CMAKE_CURRENT_LIST_DIR}/apps)
