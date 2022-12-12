@@ -62,10 +62,10 @@ Currently the input format is quite simple, i.e. it the renderer takes two JSON 
 * [x] CMake Build
 * [x] Linux Build
 * [x] Normal Mapping
-* [ ] Hero Wavelength
-* [ ] Microfacet based Refraction
-* [ ] Path Guiding Integration
-* [ ] USD
+* [ ] GPU Path Tracer
+	* [ ] Vulkan - Initial Compute Shaders
+	* [ ] Vulkan - Build Acceleration Structures & Basic Ray Tracer
+	* [ ] Refactor Path Tracer
 
 ## References
 
