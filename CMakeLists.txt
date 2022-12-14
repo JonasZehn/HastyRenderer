@@ -72,7 +72,7 @@ target_link_libraries(
         benchmark::benchmark_main)
 target_compile_definitions(HastyBenchmarks PUBLIC BENCHMARK_STATIC_DEFINE=1)
 
-add_executable(VulkanPrototype "apps/VulkanPrototype.cpp")
+add_executable(VulkanPrototype "apps/VulkanPrototype.cpp" "apps/VulkanPrototype.h")
 target_link_libraries(VulkanPrototype PUBLIC libHastyRendererViewer Vulkan::Vulkan)
 target_include_directories(VulkanPrototype PRIVATE ${VULKAN_HPP_INCLUDE_DIRS})
 target_include_directories(VulkanPrototype PRIVATE ${CMAKE_CURRENT_LIST_DIR}/apps)
