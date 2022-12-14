@@ -155,16 +155,46 @@ Image3f readImage3f(const std::filesystem::path& filename)
 }
 void writeEXR(const Image<Vec3f>& image, const std::filesystem::path& filename)
 {
-  std::unique_ptr<OIIO::ImageOutput> out = OIIO::ImageOutput::create (filename);
+  std::unique_ptr<OIIO::ImageOutput> out = OIIO::ImageOutput::create(filename);
   if (!out)
   {
     throw std::runtime_error("could not open file " + filename.string() + " for writing");
   }
   OIIO::TypeDesc typeDesc = OIIO::TypeDesc::FLOAT;
   OIIO::ImageSpec spec(image.getWidth(), image.getHeight(), 3, typeDesc);
-  out->open (filename, spec);
+  out->open(filename, spec);
   out->write_image(typeDesc, image.data());
-  out->close ();
+  out->close();
+}
+
+void writeEXR(const Image<Vec4f>& image, const std::filesystem::path& filename)
+{
+  std::unique_ptr<OIIO::ImageOutput> out = OIIO::ImageOutput::create(filename);
+  if (!out)
+  {
+    throw std::runtime_error("could not open file " + filename.string() + " for writing");
+  }
+  OIIO::TypeDesc typeDesc = OIIO::TypeDesc::FLOAT;
+  OIIO::ImageSpec spec(image.getWidth(), image.getHeight(), 4, typeDesc);
+  out->open(filename, spec);
+  out->write_image(typeDesc, image.data());
+  out->close();
+}
+
+Image4f addAlphaChannel(const Image3f& image) {
+  Image4f result(image.getWidth(), image.getHeight());
+
+  for (uint32_t y = 0; y < image.getHeight(); y++)
+  {
+    for (uint32_t x = 0; x < image.getWidth(); x++)
+    {
+      result(x, y)[0] = image(x, y)[0];
+      result(x, y)[1] = image(x, y)[1];
+      result(x, y)[2] = image(x, y)[2];
+      result(x, y)[3] = 1.0f;
+    }
+  }
+  return result;
 }
 
 }

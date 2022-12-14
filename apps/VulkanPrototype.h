@@ -61,6 +61,63 @@ inline void printQueueFamilyProperties(const std::string& name, const VkQueueFam
   std::cout << "  minImageTransferGranularity  (extent) : " << familyProperties.minImageTransferGranularity.width << ',' << familyProperties.minImageTransferGranularity.height << ',' << familyProperties.minImageTransferGranularity.depth << '\n';
 }
 
+class VulkanComputeDeviceAndQueue;
+
+class VulkanBuffer {
+public:
+  VulkanBuffer(VulkanComputeDeviceAndQueue& deviceAndQueue, std::size_t bufferSize, VkBufferUsageFlags usageFlags, VkMemoryPropertyFlags memoryFlags);
+
+  VulkanBuffer(const VulkanBuffer& b) = delete;
+  VulkanBuffer(VulkanBuffer&& b) {
+    *this = std::move(b);
+  }
+  VulkanBuffer& operator=(const VulkanBuffer& b) = delete;
+  VulkanBuffer& operator=(VulkanBuffer&& b) {
+    this->physicalDevice = b.physicalDevice;
+    this->logicalDevice = b.logicalDevice;
+    this->buffer = b.buffer;
+    this->bufferMemory = b.bufferMemory;
+    b.physicalDevice = nullptr;
+    b.logicalDevice = nullptr;
+    b.buffer = nullptr;
+    b.bufferMemory = nullptr;
+    return *this;
+  }
+
+  ~VulkanBuffer() {
+    destroy();
+  }
+
+  void loadData(void* pixels, std::size_t imageSize) {
+    void* data;
+    vkMapMemory(logicalDevice, bufferMemory, 0, imageSize, 0, &data);
+    memcpy(data, pixels, static_cast<size_t>(imageSize));
+    vkUnmapMemory(logicalDevice, bufferMemory);
+  }
+  void writeData(void* pixels, std::size_t imageSize) {
+    void* data;
+    vkMapMemory(logicalDevice, bufferMemory, 0, imageSize, 0, &data);
+    memcpy(pixels, data, static_cast<size_t>(imageSize));
+    vkUnmapMemory(logicalDevice, bufferMemory);
+  }
+  void destroy() {
+    if (bufferMemory != nullptr) {
+      vkFreeMemory(logicalDevice, bufferMemory, nullptr);
+      bufferMemory = nullptr;
+    }
+    if (buffer != nullptr) {
+      vkDestroyBuffer(logicalDevice, buffer, nullptr);
+      buffer = nullptr;
+    }
+  }
+
+  VkPhysicalDevice physicalDevice{ nullptr };
+  VkDevice logicalDevice{ nullptr };
+  VkBuffer buffer{ nullptr };
+  VkDeviceMemory bufferMemory{ nullptr };
+
+};
+
 class VulkanInstance {
 public:
   VulkanInstance() {
@@ -121,19 +178,6 @@ public:
 
   ~VulkanComputeDeviceAndQueue() {
     destroy();
-  }
-
-
-  std::optional<uint32_t> getMemoryTypeIndex(VkPhysicalDevice physicalDevice, uint32_t memoryTypeBits, VkMemoryPropertyFlags properties) {
-    for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; i++) {
-      bool memoryTypeSupportedByDeviceForResource = memoryTypeBits & (1 << i);
-      bool memoryTypeHasAllProperties = (memoryProperties.memoryTypes[i].propertyFlags & properties) == properties;
-      if (memoryTypeSupportedByDeviceForResource && memoryTypeHasAllProperties) {
-        return i;
-      }
-    }
-
-    return std::optional<uint32_t>();
   }
 
   void init(VulkanInstance& instance) {
@@ -239,6 +283,22 @@ public:
       logicalDevice = nullptr;
     }
     physicalDevice = nullptr;
+  }
+
+  std::optional<uint32_t> getMemoryTypeIndex(uint32_t memoryTypeBits, VkMemoryPropertyFlags properties) {
+    for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; i++) {
+      bool memoryTypeSupportedByDeviceForResource = memoryTypeBits & (1 << i);
+      bool memoryTypeHasAllProperties = (memoryProperties.memoryTypes[i].propertyFlags & properties) == properties;
+      if (memoryTypeSupportedByDeviceForResource && memoryTypeHasAllProperties) {
+        return i;
+      }
+    }
+
+    return std::optional<uint32_t>();
+  }
+
+  VulkanBuffer allocateHostBuffer(std::size_t imageSize) {
+    return VulkanBuffer(*this, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
   }
 
   VkPhysicalDevice physicalDevice{ nullptr };

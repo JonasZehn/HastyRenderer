@@ -246,6 +246,9 @@ void writePFM(const Image3f& image, const std::filesystem::path& filename);
 Image1f readImage1f(const std::filesystem::path& filename);
 Image3f readImage3f(const std::filesystem::path& filename);
 void writeEXR(const Image<Vec3f>& image, const std::filesystem::path& filename);
+void writeEXR(const Image<Vec4f>& image, const std::filesystem::path& filename);
+
+Image4f addAlphaChannel(const Image3f& image);
 
 template<typename C>
 void swap(Image<C>& i1, Image<C>& i2)
