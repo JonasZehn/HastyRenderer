@@ -64,6 +64,7 @@ inline void printQueueFamilyProperties(const std::string& name, const VkQueueFam
 class VulkanComputeDeviceAndQueue;
 
 class VulkanBuffer {
+  friend class VulkanComputeDeviceAndQueue;
 public:
   VulkanBuffer(VulkanComputeDeviceAndQueue& deviceAndQueue, std::size_t bufferSize, VkBufferUsageFlags usageFlags, VkMemoryPropertyFlags memoryFlags);
 
@@ -111,14 +112,93 @@ public:
     }
   }
 
+private:
   VkPhysicalDevice physicalDevice{ nullptr };
   VkDevice logicalDevice{ nullptr };
   VkBuffer buffer{ nullptr };
   VkDeviceMemory bufferMemory{ nullptr };
 
 };
+class VulkanImage {
+  friend class VulkanComputeDeviceAndQueue;
+public:
+  VulkanImage(VulkanComputeDeviceAndQueue& deviceAndQueue, uint32_t _width, uint32_t _height, VkFormat _format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties);
+  VulkanImage(const VulkanImage& b) = delete;
+  VulkanImage(VulkanImage&& b) {
+    *this = std::move(b);
+  }
+  VulkanImage& operator=(const VulkanImage& b) = delete;
+  VulkanImage& operator=(VulkanImage&& b) {
+    this->physicalDevice = b.physicalDevice;
+    this->logicalDevice = b.logicalDevice;
+    this->image = b.image;
+    this->imageMemory = b.imageMemory;
+    this->width = b.width;
+    this->height = b.height;
+    this->format = b.format;
+    this->sampler = b.sampler;
+    this->layout = b.layout;
+    this->view = b.view;
+    this->descriptor = b.descriptor;
+    this->stage = b.stage;
+    b.physicalDevice = nullptr;
+    b.logicalDevice = nullptr;
+    b.image = nullptr;
+    b.imageMemory = nullptr;
+    b.sampler = nullptr;
+    b.view = nullptr;
+
+    return *this;
+  }
+
+  ~VulkanImage() {
+    destroy();
+  }
+
+  void updateDescriptor() {
+    descriptor.sampler = sampler;
+    descriptor.imageView = view;
+    descriptor.imageLayout = layout;
+  }
+
+  void destroy() {
+    if (sampler != nullptr) {
+      vkDestroySampler(logicalDevice, sampler, nullptr);
+      sampler = nullptr;
+    }
+    if (view != nullptr) {
+      vkDestroyImageView(logicalDevice, view, nullptr);
+      view = nullptr;
+    }
+
+    if (imageMemory != nullptr) {
+      vkFreeMemory(logicalDevice, imageMemory, nullptr);
+      imageMemory = nullptr;
+    }
+    if (image != nullptr) {
+      vkDestroyImage(logicalDevice, image, nullptr);
+      image = nullptr;
+    }
+  }
+
+
+private:
+  VkPhysicalDevice physicalDevice{ nullptr };
+  VkDevice logicalDevice{ nullptr };
+  VkImage image{ nullptr };
+  VkDeviceMemory imageMemory{ nullptr };
+  uint32_t width;
+  uint32_t height;
+  VkFormat format;
+  VkSampler sampler{ nullptr };
+  VkImageLayout layout;
+  VkImageView view{ nullptr };
+  VkDescriptorImageInfo  descriptor;
+  VkPipelineStageFlags stage;
+};
 
 class VulkanInstance {
+  friend class VulkanComputeDeviceAndQueue;
 public:
   VulkanInstance() {
 
@@ -165,10 +245,13 @@ public:
     }
   }
 
+private:
   VkInstance rawInstance{ nullptr };
 };
 
 class VulkanComputeDeviceAndQueue {
+  friend class VulkanBuffer;
+  friend class VulkanImage;
 public:
   VulkanComputeDeviceAndQueue() {
 
@@ -275,6 +358,11 @@ public:
       VK_CHECK_RESULT(vkDeviceWaitIdle(logicalDevice));
 
       if (computeCommandPool != nullptr) {
+        for (VkCommandBuffer buffer : submittedSingleTimeCommandBuffer) {
+          vkFreeCommandBuffers(logicalDevice, computeCommandPool, 1, &buffer); //TODO use fences and sometimes clear the list
+        }
+        submittedSingleTimeCommandBuffer.clear();
+
         vkDestroyCommandPool(logicalDevice, computeCommandPool, nullptr);
         computeCommandPool = nullptr;
       }
@@ -301,11 +389,158 @@ public:
     return VulkanBuffer(*this, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
   }
 
+  VulkanImage allocateImage(VkFormat format, std::size_t texWidth, std::size_t texHeight, VkImageUsageFlags usageFlags) {
+    return VulkanImage(*this, texWidth, texHeight, format, VK_IMAGE_TILING_OPTIMAL, usageFlags, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+  }
+
+  VkCommandBuffer beginSingleTimeCommandBuffer() {
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandPool = computeCommandPool;
+    allocInfo.commandBufferCount = 1;
+
+    VkCommandBuffer commandBuffer;
+    VK_CHECK_RESULT(vkAllocateCommandBuffers(logicalDevice, &allocInfo, &commandBuffer));
+
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+    VK_CHECK_RESULT(vkBeginCommandBuffer(commandBuffer, &beginInfo));
+
+    return commandBuffer;
+  }
+
+  void endSingleTimeCommandBuffer(VkCommandBuffer commandBuffer) {
+    VK_CHECK_RESULT(vkEndCommandBuffer(commandBuffer));
+
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &commandBuffer;
+
+    VkFence fence = VK_NULL_HANDLE;
+    VK_CHECK_RESULT(vkQueueSubmit(computeQueue, 1, &submitInfo, fence));
+
+    submittedSingleTimeCommandBuffer.emplace_back(commandBuffer);
+  }
+
+  // doing an image layout transition while keeping it on the same queue family
+  // see https://github.com/Overv/VulkanTutorial/tree/master/code at the time of writing this the license for the code folder is CC0 1.0 Universal.
+  void transitionImageLayout(VulkanImage& image, VkImageLayout newLayout) {
+    VkCommandBuffer commandBuffer = beginSingleTimeCommandBuffer();
+
+    VkPipelineStageFlags sourceStage;
+    VkPipelineStageFlags destinationStage;
+
+    VkImageMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.oldLayout = image.layout;
+    barrier.newLayout = newLayout;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = image.image;
+    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+
+    if (image.layout == VK_IMAGE_LAYOUT_UNDEFINED) {
+      barrier.srcAccessMask = 0;
+      sourceStage = image.stage;
+    }
+    else if (image.layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+      barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+      sourceStage = image.stage;
+    }
+    else if (image.layout == VK_IMAGE_LAYOUT_GENERAL) {
+      barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+      sourceStage = image.stage;
+    }
+    else {
+      throw std::invalid_argument("unsupported layout transition!");
+    }
+
+    if (newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+      barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+      destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    }
+    else if (newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+      barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+      destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    }
+    else if (newLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
+      barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+      destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    }
+    else if (newLayout == VK_IMAGE_LAYOUT_GENERAL) {
+      barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+      destinationStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+    }
+    else {
+      throw std::invalid_argument("unsupported layout transition!");
+    }
+
+    vkCmdPipelineBarrier(
+      commandBuffer,
+      sourceStage, destinationStage,
+      0,
+      0, nullptr,
+      0, nullptr,
+      1, &barrier
+    );
+
+    endSingleTimeCommandBuffer(commandBuffer);
+
+    image.layout = newLayout;
+    image.stage = destinationStage;
+    image.updateDescriptor();
+  }
+
+  void copyHostBufferToDeviceImage(VulkanBuffer &buffer, VulkanImage &image) {
+    VkCommandBuffer commandBuffer = beginSingleTimeCommandBuffer();
+
+    VkBufferImageCopy region{};
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+
+    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.imageSubresource.mipLevel = 0;
+    region.imageSubresource.baseArrayLayer = 0;
+    region.imageSubresource.layerCount = 1;
+
+    region.imageOffset = { 0, 0, 0 };
+    region.imageExtent = {
+        image.width,
+        image.height,
+        1
+    };
+
+    vkCmdCopyBufferToImage(
+      commandBuffer,
+      buffer.buffer,
+      image.image,
+      image.layout,
+      1,
+      &region
+    );
+    endSingleTimeCommandBuffer(commandBuffer);
+  }
+
+  void waitIdle() {
+    vkDeviceWaitIdle(logicalDevice);
+  }
+
+ private:
   VkPhysicalDevice physicalDevice{ nullptr };
   VkDevice logicalDevice{ nullptr };
   VkQueue computeQueue{ nullptr };
   VkCommandPool computeCommandPool{ nullptr };
   uint32_t computeQueueFamilyIndex{ 0xFFFFFFFF };
   VkPhysicalDeviceMemoryProperties memoryProperties;
+  std::vector<VkCommandBuffer> submittedSingleTimeCommandBuffer;
 };
 

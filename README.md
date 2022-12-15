@@ -81,6 +81,7 @@ Currently the input format is quite simple, i.e. it the renderer takes two JSON 
 - [Vulkan 1.1 Spec](https://registry.khronos.org/vulkan/specs/1.1/html/)
 - [NVIDIA Vulkan Ray Tracing Tutorial](https://nvpro-samples.github.io/vk_raytracing_tutorial_KHR/)
 - [Vulkan C++ examples and demos - Sascha Willems](https://github.com/SaschaWillems/Vulkan)
+- [Overv / Vulkan Tutorial](https://vulkan-tutorial.com/)
 
  ## Useful Resources
 - [McGuire Computer Graphics Archive - Meshes](https://casual-effects.com/data/)
