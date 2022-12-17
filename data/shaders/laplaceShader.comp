@@ -12,7 +12,8 @@ void main()
 {
 	ivec2 loc = ivec2(gl_GlobalInvocationID.xy);
 	
-	ivec4 imageExtent = { 0, 0, 1280, 720 };
+	ivec2 size = imageSize(inputImage);
+	ivec4 imageExtent = { 0, 0, size[0], size[1] };
 	const int filterWidth = 3;
 	const int filterHeight = 3;
 	const float weights[filterHeight][filterWidth] = {
