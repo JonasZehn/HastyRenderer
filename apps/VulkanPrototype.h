@@ -66,55 +66,25 @@ class VulkanComputeDeviceAndQueue;
 class VulkanBuffer {
   friend class VulkanComputeDeviceAndQueue;
 public:
-  VulkanBuffer(VulkanComputeDeviceAndQueue& deviceAndQueue, std::size_t bufferSize, VkBufferUsageFlags usageFlags, VkMemoryPropertyFlags memoryFlags);
+  VulkanBuffer(const std::shared_ptr<VulkanComputeDeviceAndQueue>& _deviceAndQueue, std::size_t bufferSize, VkBufferUsageFlags usageFlags, VkMemoryPropertyFlags memoryFlags);
 
   VulkanBuffer(const VulkanBuffer& b) = delete;
   VulkanBuffer(VulkanBuffer&& b) {
     *this = std::move(b);
   }
   VulkanBuffer& operator=(const VulkanBuffer& b) = delete;
-  VulkanBuffer& operator=(VulkanBuffer&& b) {
-    this->physicalDevice = b.physicalDevice;
-    this->logicalDevice = b.logicalDevice;
-    this->buffer = b.buffer;
-    this->bufferMemory = b.bufferMemory;
-    b.physicalDevice = nullptr;
-    b.logicalDevice = nullptr;
-    b.buffer = nullptr;
-    b.bufferMemory = nullptr;
-    return *this;
-  }
+  VulkanBuffer& operator=(VulkanBuffer&& b);
 
   ~VulkanBuffer() {
     destroy();
   }
 
-  void loadData(void* pixels, std::size_t imageSize) {
-    void* data;
-    vkMapMemory(logicalDevice, bufferMemory, 0, imageSize, 0, &data);
-    memcpy(data, pixels, static_cast<size_t>(imageSize));
-    vkUnmapMemory(logicalDevice, bufferMemory);
-  }
-  void writeData(void* pixels, std::size_t imageSize) {
-    void* data;
-    vkMapMemory(logicalDevice, bufferMemory, 0, imageSize, 0, &data);
-    memcpy(pixels, data, static_cast<size_t>(imageSize));
-    vkUnmapMemory(logicalDevice, bufferMemory);
-  }
-  void destroy() {
-    if (bufferMemory != nullptr) {
-      vkFreeMemory(logicalDevice, bufferMemory, nullptr);
-      bufferMemory = nullptr;
-    }
-    if (buffer != nullptr) {
-      vkDestroyBuffer(logicalDevice, buffer, nullptr);
-      buffer = nullptr;
-    }
-  }
+  void loadData(void* pixels, std::size_t imageSize);
+  void writeData(void* pixels, std::size_t imageSize);
+  void destroy();
 
 private:
-  VkPhysicalDevice physicalDevice{ nullptr };
-  VkDevice logicalDevice{ nullptr };
+  std::shared_ptr<VulkanComputeDeviceAndQueue> deviceAndQueue;
   VkBuffer buffer{ nullptr };
   VkDeviceMemory bufferMemory{ nullptr };
 
@@ -122,69 +92,32 @@ private:
 class VulkanImage {
   friend class VulkanComputeDeviceAndQueue;
 public:
-  VulkanImage(VulkanComputeDeviceAndQueue& deviceAndQueue, uint32_t _width, uint32_t _height, VkFormat _format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties);
+  VulkanImage(const std::shared_ptr<VulkanComputeDeviceAndQueue>& _deviceAndQueue, uint32_t _width, uint32_t _height, VkFormat _format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties);
   VulkanImage(const VulkanImage& b) = delete;
   VulkanImage(VulkanImage&& b) {
     *this = std::move(b);
   }
   VulkanImage& operator=(const VulkanImage& b) = delete;
-  VulkanImage& operator=(VulkanImage&& b) {
-    this->physicalDevice = b.physicalDevice;
-    this->logicalDevice = b.logicalDevice;
-    this->image = b.image;
-    this->imageMemory = b.imageMemory;
-    this->width = b.width;
-    this->height = b.height;
-    this->format = b.format;
-    this->sampler = b.sampler;
-    this->layout = b.layout;
-    this->view = b.view;
-    this->descriptor = b.descriptor;
-    this->stage = b.stage;
-    b.physicalDevice = nullptr;
-    b.logicalDevice = nullptr;
-    b.image = nullptr;
-    b.imageMemory = nullptr;
-    b.sampler = nullptr;
-    b.view = nullptr;
+  VulkanImage& operator=(VulkanImage&& b);
 
-    return *this;
+  ~VulkanImage();
+
+  void updateDescriptor();
+
+  void destroy();
+
+  VkDescriptorImageInfo& getDescriptor() {
+    return descriptor;
   }
-
-  ~VulkanImage() {
-    destroy();
+  uint32_t getWidth() const {
+    return width;
   }
-
-  void updateDescriptor() {
-    descriptor.sampler = sampler;
-    descriptor.imageView = view;
-    descriptor.imageLayout = layout;
+  uint32_t getHeight() const {
+    return height;
   }
-
-  void destroy() {
-    if (sampler != nullptr) {
-      vkDestroySampler(logicalDevice, sampler, nullptr);
-      sampler = nullptr;
-    }
-    if (view != nullptr) {
-      vkDestroyImageView(logicalDevice, view, nullptr);
-      view = nullptr;
-    }
-
-    if (imageMemory != nullptr) {
-      vkFreeMemory(logicalDevice, imageMemory, nullptr);
-      imageMemory = nullptr;
-    }
-    if (image != nullptr) {
-      vkDestroyImage(logicalDevice, image, nullptr);
-      image = nullptr;
-    }
-  }
-
 
 private:
-  VkPhysicalDevice physicalDevice{ nullptr };
-  VkDevice logicalDevice{ nullptr };
+  std::shared_ptr<VulkanComputeDeviceAndQueue> deviceAndQueue;
   VkImage image{ nullptr };
   VkDeviceMemory imageMemory{ nullptr };
   uint32_t width;
@@ -210,48 +143,38 @@ public:
     destroy();
   }
 
-  void init(bool enableValidationLayers = true) {
-    assert(rawInstance == nullptr);
-
-    std::vector<const char*> validationLayers;
-    if (enableValidationLayers) {
-      validationLayers.push_back("VK_LAYER_KHRONOS_validation");
-    }
-
-    std::vector<const char*> requiredInstanceExtensions;
-
-    VkApplicationInfo appInfo{ VK_STRUCTURE_TYPE_APPLICATION_INFO };
-    appInfo.pApplicationName = "HastyPrototype";
-    appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-    appInfo.pEngineName = "Hasty";
-    appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-    appInfo.apiVersion = VK_API_VERSION_1_1;
-
-    VkInstanceCreateInfo createInfo{ VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
-    createInfo.pApplicationInfo = &appInfo;
-
-    createInfo.enabledExtensionCount = static_cast<uint32_t>(requiredInstanceExtensions.size());
-    createInfo.ppEnabledExtensionNames = requiredInstanceExtensions.data();
-
-    createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
-    createInfo.ppEnabledLayerNames = validationLayers.data();
-
-    VK_CHECK_RESULT(vkCreateInstance(&createInfo, nullptr, &rawInstance));
-  }
-  void destroy() {
-    if (rawInstance != nullptr) {
-      vkDestroyInstance(rawInstance, nullptr);
-      rawInstance = nullptr;
-    }
-  }
+  void init(bool enableValidationLayers = true);
+  void destroy();
 
 private:
   VkInstance rawInstance{ nullptr };
 };
 
+class VulkanFence {
+public:
+  VulkanFence(const std::shared_ptr<VulkanComputeDeviceAndQueue>& _deviceAndQueue);
+  VulkanFence(const VulkanFence& b) = delete;
+  VulkanFence(VulkanFence&& b) {
+    *this = std::move(b);
+  }
+  VulkanFence& operator=(const VulkanFence& b) = delete;
+  VulkanFence& operator=(VulkanFence&& b);
+  ~VulkanFence() {
+    destroy();
+  }
+
+  void destroy();
+
+  VkFence getRaw() { return fence; }
+private:
+  std::shared_ptr<VulkanComputeDeviceAndQueue> deviceAndQueue;
+  VkFence fence;
+};
+
 class VulkanComputeDeviceAndQueue {
   friend class VulkanBuffer;
   friend class VulkanImage;
+  friend class VulkanShaderModule;
 public:
   VulkanComputeDeviceAndQueue() {
 
@@ -385,14 +308,6 @@ public:
     return std::optional<uint32_t>();
   }
 
-  VulkanBuffer allocateHostBuffer(std::size_t imageSize) {
-    return VulkanBuffer(*this, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-  }
-
-  VulkanImage allocateImage(VkFormat format, std::size_t texWidth, std::size_t texHeight, VkImageUsageFlags usageFlags) {
-    return VulkanImage(*this, texWidth, texHeight, format, VK_IMAGE_TILING_OPTIMAL, usageFlags, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-  }
-
   VkCommandBuffer beginSingleTimeCommandBuffer() {
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -412,7 +327,7 @@ public:
     return commandBuffer;
   }
 
-  void endSingleTimeCommandBuffer(VkCommandBuffer commandBuffer) {
+  void endSingleTimeCommandBuffer(VkCommandBuffer commandBuffer, VkFence fence) {
     VK_CHECK_RESULT(vkEndCommandBuffer(commandBuffer));
 
     VkSubmitInfo submitInfo{};
@@ -420,7 +335,6 @@ public:
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &commandBuffer;
 
-    VkFence fence = VK_NULL_HANDLE;
     VK_CHECK_RESULT(vkQueueSubmit(computeQueue, 1, &submitInfo, fence));
 
     submittedSingleTimeCommandBuffer.emplace_back(commandBuffer);
@@ -492,14 +406,15 @@ public:
       1, &barrier
     );
 
-    endSingleTimeCommandBuffer(commandBuffer);
+    VkFence fence = VK_NULL_HANDLE;
+    endSingleTimeCommandBuffer(commandBuffer, fence);
 
     image.layout = newLayout;
     image.stage = destinationStage;
     image.updateDescriptor();
   }
 
-  void copyHostBufferToDeviceImage(VulkanBuffer &buffer, VulkanImage &image) {
+  void copyBufferToImage(VulkanBuffer &buffer, VulkanImage &image) {
     VkCommandBuffer commandBuffer = beginSingleTimeCommandBuffer();
 
     VkBufferImageCopy region{};
@@ -527,11 +442,60 @@ public:
       1,
       &region
     );
-    endSingleTimeCommandBuffer(commandBuffer);
+    VkFence fence = VK_NULL_HANDLE;
+    endSingleTimeCommandBuffer(commandBuffer, fence);
+  }
+  void copyImageToBuffer(VulkanImage& image, VulkanBuffer& buffer, VulkanFence &fence) {
+    VkCommandBuffer commandBuffer = beginSingleTimeCommandBuffer();
+
+    VkBufferImageCopy region{};
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+
+    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.imageSubresource.mipLevel = 0;
+    region.imageSubresource.baseArrayLayer = 0;
+    region.imageSubresource.layerCount = 1;
+
+    region.imageOffset = { 0, 0, 0 };
+    region.imageExtent = {
+        image.width,
+        image.height,
+        1
+    };
+
+    vkCmdCopyImageToBuffer(
+      commandBuffer,
+      image.image,
+      image.layout,
+      buffer.buffer,
+      1,
+      &region
+    );
+    endSingleTimeCommandBuffer(commandBuffer, fence.getRaw());
   }
 
-  void waitIdle() {
+
+  void waitDeviceIdle() {
     vkDeviceWaitIdle(logicalDevice);
+  }
+  void waitForFence(VulkanFence &fence) {
+    VkFence f = fence.getRaw();
+    vkWaitForFences(logicalDevice, 1, &f, VK_TRUE, UINT64_MAX);
+  }
+
+  VkQueue& getQueue() {
+    return computeQueue;
+  }
+  VkPhysicalDevice& getPhysicalDevice() {
+    return physicalDevice;
+  }
+  VkDevice& getLogicalDevice() {
+    return logicalDevice;
+  }
+  VkCommandPool& getCommandPool() {
+    return computeCommandPool;
   }
 
  private:
@@ -542,5 +506,71 @@ public:
   uint32_t computeQueueFamilyIndex{ 0xFFFFFFFF };
   VkPhysicalDeviceMemoryProperties memoryProperties;
   std::vector<VkCommandBuffer> submittedSingleTimeCommandBuffer;
+};
+
+class VulkanShaderModule {
+public:
+  VulkanShaderModule() {}
+  
+  void init(const std::shared_ptr<VulkanComputeDeviceAndQueue>& _device, const std::vector<char>& code) {
+    assert(shaderModule == nullptr);
+
+    deviceAndQueue = _device;
+
+    VkDevice logicalDevice = deviceAndQueue->logicalDevice;
+
+    VkShaderModuleCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    createInfo.codeSize = code.size();
+    createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
+
+    if (vkCreateShaderModule(logicalDevice, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+      throw std::runtime_error("failed to create shader module!");
+    }
+
+    VkPipelineShaderStageCreateInfo shaderStageInfo{};
+    shaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    shaderStageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+
+    shaderStageInfo.module = shaderModule;
+    shaderStageInfo.pName = "main";
+  }
+  VulkanShaderModule(const VulkanShaderModule& b) = delete;
+  VulkanShaderModule(VulkanShaderModule&& b) {
+    *this = std::move(b);
+  }
+  VulkanShaderModule& operator=(const VulkanShaderModule& b) = delete;
+  VulkanShaderModule& operator=(VulkanShaderModule&& b) {
+    this->deviceAndQueue = b.deviceAndQueue;
+    this->shaderModule = b.shaderModule;
+    b.deviceAndQueue = nullptr;
+    b.shaderModule = nullptr;
+
+    return *this;
+  }
+
+  ~VulkanShaderModule() {
+    destroy();
+  }
+
+  void destroy() {
+    if (deviceAndQueue) {
+      VkDevice logicalDevice = deviceAndQueue->logicalDevice;
+
+      if (shaderModule != nullptr) {
+        vkDestroyShaderModule(logicalDevice, shaderModule, nullptr);
+        shaderModule = nullptr;
+      }
+      deviceAndQueue = nullptr;
+    }
+  }
+
+  VkShaderModule getModule() {
+    return shaderModule;
+  }
+
+private:
+  std::shared_ptr<VulkanComputeDeviceAndQueue> deviceAndQueue;
+  VkShaderModule shaderModule{ nullptr };
 };
 

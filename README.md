@@ -63,7 +63,7 @@ Currently the input format is quite simple, i.e. it the renderer takes two JSON 
 * [x] Linux Build
 * [x] Normal Mapping
 * [ ] GPU Path Tracer
-	* [ ] Vulkan - Initial Compute Shaders
+	* [x] Vulkan - Initial Compute Shaders
 	* [ ] Vulkan - Build Acceleration Structures & Basic Ray Tracer
 	* [ ] Refactor Path Tracer
 

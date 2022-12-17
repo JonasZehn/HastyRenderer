@@ -1,0 +1,56 @@
+#version 450
+
+// https://www.khronos.org/opengl/wiki/Layout_Qualifier_(GLSL)
+// https://www.khronos.org/opengl/wiki/Compute_Shader
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+layout (binding = 0, rgba32f) uniform readonly image2D inputImage;
+layout (binding = 1, rgba32f) uniform image2D resultImage;
+
+void main()
+{
+	ivec2 loc = ivec2(gl_GlobalInvocationID.xy);
+	
+	ivec4 imageExtent = { 0, 0, 1280, 720 };
+	const int filterWidth = 3;
+	const int filterHeight = 3;
+	const float weights[filterHeight][filterWidth] = {
+		{ 0.0, -0.25, 0.0 },
+		{ -0.25, 1.0, -0.25 },
+		{ 0.0, -0.25, 0.0 }
+	};
+	
+	ivec2 locOffset = loc - ivec2(filterWidth / 2, filterHeight / 2);
+	
+	vec4 result = vec4(0.0);
+	
+	if(locOffset.x >= imageExtent[0] && locOffset.y >= imageExtent[1]
+		&& locOffset.x + filterWidth - 1 < imageExtent[2] && locOffset.y + filterHeight - 1 < imageExtent[3])
+	{
+		// load
+		vec4 pixels[filterHeight][filterWidth];
+		for (int j=0; j<filterHeight; j++) {
+			for (int i=0; i<filterWidth; i++) {
+				pixels[j][i] = imageLoad(inputImage, locOffset + ivec2(i, j)).rgba;
+			}
+		}
+		
+		// conv
+		for (int j=0; j<filterHeight; j++) {
+			for (int i=0; i<filterWidth; i++) {
+			  result += pixels[j][i] * weights[j][i];
+			}
+		}
+	}
+	
+	result.xyz = abs(result.xyz);
+	result.a = 1.0;
+	
+	if(loc.x >= imageExtent[0] && loc.y >= imageExtent[1] 
+		&& loc.x < imageExtent[2] && loc.y < imageExtent[3])
+	{
+		imageStore(resultImage, loc, result);
+	}
+}
+

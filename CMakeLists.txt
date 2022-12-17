@@ -76,3 +76,5 @@ add_executable(VulkanPrototype "apps/VulkanPrototype.cpp" "apps/VulkanPrototype.
 target_link_libraries(VulkanPrototype PUBLIC libHastyRendererViewer Vulkan::Vulkan)
 target_include_directories(VulkanPrototype PRIVATE ${VULKAN_HPP_INCLUDE_DIRS})
 target_include_directories(VulkanPrototype PRIVATE ${CMAKE_CURRENT_LIST_DIR}/apps)
+target_compile_definitions(VulkanPrototype PRIVATE "HASTY_SHADER_PATH=std::filesystem::path(\"${CMAKE_CURRENT_LIST_DIR}/data/shaders\")")
+
