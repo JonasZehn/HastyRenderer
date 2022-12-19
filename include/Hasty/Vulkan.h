@@ -1,15 +1,15 @@
 
-#include <Hasty/Image.h>
-
 #include <vulkan/vulkan.h>
 #include <vulkan/vk_enum_string_helper.h>
 
-#include <cassert>
-#include <vector>
 #include <stdexcept>
-#include <string>
+#include <cassert>
 #include <iostream>
+#include <vector>
+#include <string>
 #include <optional>
+
+namespace Hasty {
 
 inline void checkVkResult(VkResult vkResult, const char* name) {
   if (vkResult != VK_SUCCESS) {
@@ -18,6 +18,7 @@ inline void checkVkResult(VkResult vkResult, const char* name) {
 }
 
 #define VK_CHECK_RESULT(x)  {  VkResult _result_name123 = ( x ); checkVkResult(_result_name123, #x);  }
+
 
 inline void printPhysicalDeviceLimits(const VkPhysicalDeviceLimits& limits) {
   std::cout << "  .... PRINTING NOT SUPPORTED .... " << '\n';
@@ -78,10 +79,12 @@ public:
   ~VulkanBuffer() {
     destroy();
   }
-
-  void loadData(void* pixels, std::size_t imageSize);
-  void writeData(void* pixels, std::size_t imageSize);
   void destroy();
+
+  void write(void* src, std::size_t imageSize);
+  void read(void* dst, std::size_t imageSize);
+  VkDeviceAddress getDeviceAddress(VkDevice logicalDevice);
+  VkBuffer getRaw() { return buffer; }
 
 private:
   std::shared_ptr<VulkanComputeDeviceAndQueue> deviceAndQueue;
@@ -255,6 +258,24 @@ public:
     queueCreateInfo.pQueuePriorities = &queuePriority;
 
     VkPhysicalDeviceFeatures2 features2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
+    VkPhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeature{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES };
+    VkPhysicalDeviceRayTracingPipelineFeaturesKHR rayTracingPipelineFeatures{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR };
+    VkPhysicalDeviceAccelerationStructureFeaturesKHR accelerationStructureFeaturesKHR{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR };
+
+    features2.pNext = &bufferDeviceAddressFeature;
+    bufferDeviceAddressFeature.pNext = &rayTracingPipelineFeatures;
+    rayTracingPipelineFeatures.pNext = &accelerationStructureFeaturesKHR;
+    vkGetPhysicalDeviceFeatures2(physicalDevice, &features2);
+
+    if (bufferDeviceAddressFeature.bufferDeviceAddress == VK_FALSE) {
+      throw std::runtime_error("gpu does not support required feature: bufferDeviceAddress");
+    }
+    if (rayTracingPipelineFeatures.rayTracingPipeline == VK_FALSE) {
+      throw std::runtime_error("gpu does not support required feature: rayTracingPipeline");
+    }
+    if (accelerationStructureFeaturesKHR.accelerationStructure == VK_FALSE) {
+      throw std::runtime_error("gpu does not support required feature: rayTracingPipeline");
+    }
 
     VkDeviceCreateInfo deviceCreateInfo{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
     deviceCreateInfo.queueCreateInfoCount = 1;
@@ -480,6 +501,9 @@ public:
   void waitDeviceIdle() {
     vkDeviceWaitIdle(logicalDevice);
   }
+  void waitQueueIdle() {
+    vkQueueWaitIdle(computeQueue);
+  }
   void waitForFence(VulkanFence &fence) {
     VkFence f = fence.getRaw();
     vkWaitForFences(logicalDevice, 1, &f, VK_TRUE, UINT64_MAX);
@@ -496,6 +520,10 @@ public:
   }
   VkCommandPool& getCommandPool() {
     return computeCommandPool;
+  }
+
+  uint32_t getQueueFamilyIndex() {
+    return computeQueueFamilyIndex;
   }
 
  private:
@@ -574,3 +602,8 @@ private:
   VkShaderModule shaderModule{ nullptr };
 };
 
+inline VulkanImage allocateDeviceImage(std::shared_ptr<VulkanComputeDeviceAndQueue> deviceAndQueue, VkFormat format, std::size_t texWidth, std::size_t texHeight, VkImageUsageFlags usageFlags) {
+  return VulkanImage(deviceAndQueue, texWidth, texHeight, format, VK_IMAGE_TILING_OPTIMAL, usageFlags, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+}
+
+}

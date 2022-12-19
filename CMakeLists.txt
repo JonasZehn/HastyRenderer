@@ -28,7 +28,12 @@ file(GLOB_RECURSE source_files include/*.h src/*.cpp)
 
 add_library(libHastyRenderer STATIC ${source_files})
 target_include_directories(libHastyRenderer PUBLIC include)
-target_link_libraries(libHastyRenderer PUBLIC nlohmann_json::nlohmann_json)
+target_link_libraries(
+    libHastyRenderer
+    PUBLIC
+        nlohmann_json::nlohmann_json
+        Vulkan::Vulkan
+    )
 target_link_libraries(
     libHastyRenderer
     PRIVATE
@@ -37,7 +42,7 @@ target_link_libraries(
         robin_hood::robin_hood
         libshishua
         OpenImageIO::OpenImageIO
-        )
+    )
 
 set(source_files "apps/ViewerUtils.cpp" "apps/ViewerUtils.h")
 add_library(libHastyRendererViewer STATIC ${source_files})
@@ -72,9 +77,13 @@ target_link_libraries(
         benchmark::benchmark_main)
 target_compile_definitions(HastyBenchmarks PUBLIC BENCHMARK_STATIC_DEFINE=1)
 
-add_executable(VulkanPrototype "apps/VulkanPrototype.cpp" "apps/VulkanPrototype.h")
-target_link_libraries(VulkanPrototype PUBLIC libHastyRendererViewer Vulkan::Vulkan)
-target_include_directories(VulkanPrototype PRIVATE ${VULKAN_HPP_INCLUDE_DIRS})
-target_include_directories(VulkanPrototype PRIVATE ${CMAKE_CURRENT_LIST_DIR}/apps)
-target_compile_definitions(VulkanPrototype PRIVATE "HASTY_SHADER_PATH=std::filesystem::path(\"${CMAKE_CURRENT_LIST_DIR}/data/shaders\")")
+add_executable(VulkanRaytracePrototype "apps/VulkanRaytracePrototype.cpp")
+target_link_libraries(
+    VulkanRaytracePrototype
+    PUBLIC
+        tinyobjloader::tinyobjloader
+        libHastyRenderer
+    )
+target_include_directories(VulkanRaytracePrototype PRIVATE ${CMAKE_CURRENT_LIST_DIR}/apps)
+target_compile_definitions(VulkanRaytracePrototype PRIVATE "HASTY_SHADER_PATH=std::filesystem::path(\"${CMAKE_CURRENT_LIST_DIR}/data/shaders\")")
 
