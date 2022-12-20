@@ -85,6 +85,7 @@ public:
   void read(void* dst, std::size_t imageSize);
   VkDeviceAddress getDeviceAddress(VkDevice logicalDevice);
   VkBuffer getRaw() { return buffer; }
+  VkDescriptorBufferInfo descriptorBufferInfo();
 
 private:
   std::shared_ptr<VulkanComputeDeviceAndQueue> deviceAndQueue;
@@ -192,15 +193,6 @@ public:
   void init(VulkanInstance& instance) {
     assert(physicalDevice == nullptr);
 
-    std::vector<const char*> enabledExtensions = { {
-        VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
-        VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
-        VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
-        VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
-        VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
-        VK_KHR_SPIRV_1_4_EXTENSION_NAME,
-        VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME
-      } };
     uint32_t deviceCount = 0;
     VK_CHECK_RESULT(vkEnumeratePhysicalDevices(instance.rawInstance, &deviceCount, nullptr));
 
@@ -259,24 +251,39 @@ public:
 
     VkPhysicalDeviceFeatures2 features2{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
     VkPhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeature{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES };
-    VkPhysicalDeviceRayTracingPipelineFeaturesKHR rayTracingPipelineFeatures{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR };
+    VkPhysicalDeviceRayQueryFeaturesKHR rayQueryFeatures{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR };
     VkPhysicalDeviceAccelerationStructureFeaturesKHR accelerationStructureFeaturesKHR{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR };
+    VkPhysicalDeviceScalarBlockLayoutFeatures scalarBlockLayoutFeatures{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES };
 
     features2.pNext = &bufferDeviceAddressFeature;
-    bufferDeviceAddressFeature.pNext = &rayTracingPipelineFeatures;
-    rayTracingPipelineFeatures.pNext = &accelerationStructureFeaturesKHR;
+    bufferDeviceAddressFeature.pNext = &rayQueryFeatures;
+    rayQueryFeatures.pNext = &accelerationStructureFeaturesKHR;
+    accelerationStructureFeaturesKHR.pNext = &scalarBlockLayoutFeatures;
     vkGetPhysicalDeviceFeatures2(physicalDevice, &features2);
 
     if (bufferDeviceAddressFeature.bufferDeviceAddress == VK_FALSE) {
       throw std::runtime_error("gpu does not support required feature: bufferDeviceAddress");
     }
-    if (rayTracingPipelineFeatures.rayTracingPipeline == VK_FALSE) {
-      throw std::runtime_error("gpu does not support required feature: rayTracingPipeline");
+    if (rayQueryFeatures.rayQuery == VK_FALSE) {
+      throw std::runtime_error("gpu does not support required feature: rayQuery");
     }
     if (accelerationStructureFeaturesKHR.accelerationStructure == VK_FALSE) {
-      throw std::runtime_error("gpu does not support required feature: rayTracingPipeline");
+      throw std::runtime_error("gpu does not support required feature: accelerationStructure");
+    }
+    if (scalarBlockLayoutFeatures.scalarBlockLayout == VK_FALSE) {
+      throw std::runtime_error("gpu does not support required feature: scalarBlockLayout");
     }
 
+    std::vector<const char*> enabledExtensions = { {
+        VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
+        VK_KHR_RAY_QUERY_EXTENSION_NAME,
+        VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
+        VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
+        VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
+        VK_KHR_SPIRV_1_4_EXTENSION_NAME,
+        VK_EXT_SCALAR_BLOCK_LAYOUT_EXTENSION_NAME,
+        VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME
+      } };
     VkDeviceCreateInfo deviceCreateInfo{ VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
     deviceCreateInfo.queueCreateInfoCount = 1;
     deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
@@ -604,6 +611,16 @@ private:
 
 inline VulkanImage allocateDeviceImage(std::shared_ptr<VulkanComputeDeviceAndQueue> deviceAndQueue, VkFormat format, std::size_t texWidth, std::size_t texHeight, VkImageUsageFlags usageFlags) {
   return VulkanImage(deviceAndQueue, texWidth, texHeight, format, VK_IMAGE_TILING_OPTIMAL, usageFlags, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+}
+
+inline VkWriteDescriptorSet writeDescriptorSet(VkDescriptorSet descriptorSet, VkDescriptorType descriptorType, uint32_t dstBinding, VkWriteDescriptorSetAccelerationStructureKHR* writeDescriptorSetAccelerationStructureKHR) {
+  VkWriteDescriptorSet result{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
+  result.dstSet = descriptorSet;
+  result.descriptorType = descriptorType;
+  result.dstBinding = dstBinding;
+  result.pNext = writeDescriptorSetAccelerationStructureKHR;
+  result.descriptorCount = 1;
+  return result;
 }
 
 }

@@ -64,8 +64,9 @@ Currently the input format is quite simple, i.e. it the renderer takes two JSON 
 * [x] Normal Mapping
 * [ ] GPU Path Tracer
 	* [x] Vulkan - Initial Compute Shaders
-	* [ ] Vulkan - Build Acceleration Structures & Basic Ray Tracer
-	* [ ] Refactor Path Tracer
+	* [x] Vulkan - Build Acceleration Structures & Basic Ray Queries
+	* [ ] Create Image Comparison in Documentation
+	* [ ] Refactor Path Tracer to Share Features More Easily
 
 ## References
 
@@ -78,10 +79,11 @@ Currently the input format is quite simple, i.e. it the renderer takes two JSON 
 - [Stochastic Progressive Photon Mapping, 2009, T. Hachisuka, H. W. Jensen](https://dl.acm.org/doi/abs/10.1145/1661412.1618487)
 - [Physically Based Shading at Disney, 2012, B. Burley](https://media.disneyanimation.com/uploads/production/publication_asset/48/asset/s2012_pbs_disney_brdf_notes_v3.pdf)
 
-- [Vulkan 1.1 Spec](https://registry.khronos.org/vulkan/specs/1.1/html/)
+- [Vulkan 1.2 Spec](https://registry.khronos.org/vulkan/specs/1.2/html/)
 - [NVIDIA Vulkan Ray Tracing Tutorial](https://nvpro-samples.github.io/vk_raytracing_tutorial_KHR/)
 - [Vulkan C++ examples and demos - Sascha Willems](https://github.com/SaschaWillems/Vulkan)
 - [Overv / Vulkan Tutorial](https://vulkan-tutorial.com/)
+- [XDC 2020 | Ray-tracing in Vulkan: A brief overview of the provisional VK_KHR_ray_tracing API](https://www.youtube.com/watch?v=-FvAJmq8NvI)
 
  ## Useful Resources
 - [McGuire Computer Graphics Archive - Meshes](https://casual-effects.com/data/)

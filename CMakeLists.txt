@@ -85,5 +85,5 @@ target_link_libraries(
         libHastyRenderer
     )
 target_include_directories(VulkanRaytracePrototype PRIVATE ${CMAKE_CURRENT_LIST_DIR}/apps)
-target_compile_definitions(VulkanRaytracePrototype PRIVATE "HASTY_SHADER_PATH=std::filesystem::path(\"${CMAKE_CURRENT_LIST_DIR}/data/shaders\")")
+target_compile_definitions(VulkanRaytracePrototype PRIVATE "HASTY_SHADER_PATH=std::filesystem::path(\"${CMAKE_CURRENT_LIST_DIR}/shaders\")")
 

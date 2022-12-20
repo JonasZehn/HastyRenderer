@@ -89,6 +89,12 @@ VkDeviceAddress VulkanBuffer::getDeviceAddress(VkDevice logicalDevice) {
   bufferDeviceAddressInfo.buffer = this->buffer;
   return vkGetBufferDeviceAddress(logicalDevice, &bufferDeviceAddressInfo);
 }
+VkDescriptorBufferInfo VulkanBuffer::descriptorBufferInfo() {
+  VkDescriptorBufferInfo result{};
+  result.buffer = this->buffer;
+  result.range = VK_WHOLE_SIZE;
+  return result;
+}
 VulkanImage::VulkanImage(const std::shared_ptr<VulkanComputeDeviceAndQueue>& _deviceAndQueue, uint32_t _width, uint32_t _height, VkFormat _format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties) {
   assert(image == nullptr);
 
