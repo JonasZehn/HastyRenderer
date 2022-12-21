@@ -306,6 +306,12 @@ void Scene::rayHit(const Ray& ray, RayHit* rayhit)
 }
 
 
+BXDF& Scene::getBXDF(std::size_t geomID, std::size_t primID)
+{
+  const std::vector<tinyobj::shape_t>& shapes = reader.GetShapes();
+  int materialId = shapes[geomID].mesh.material_ids[primID];
+  return *m_brdfs[materialId];
+}
 BXDF& Scene::getBXDF(const SurfaceInteraction& interaction)
 {
   return *m_brdfs[interaction.materialId];
@@ -353,6 +359,37 @@ const tinyobj::material_t& Scene::getMaterial(const RayHit& hit) const
   return materials[hit.interaction.materialId];
 }
 
+std::vector<std::size_t> Scene::getGeometryIDs() const
+{
+  const std::vector<tinyobj::shape_t>& shapes = reader.GetShapes();
+
+  std::vector<std::size_t> result;
+  for (std::size_t i = 0; i < shapes.size(); i++) {
+    result.push_back(i);
+  }
+  return result;
+}
+const std::vector<float>& Scene::getVertices() const
+{
+  return reader.GetAttrib().vertices;
+}
+std::size_t Scene::getTriangleCount(std::size_t geomID) const 
+{
+  const std::vector<tinyobj::shape_t>& shapes = reader.GetShapes();
+  return shapes[geomID].mesh.indices.size()/3;
+}
+std::array<int, 3> Scene::getTriangleVertexIndices(std::size_t geomID, std::size_t primID) const
+{
+  const tinyobj::attrib_t& attrib = reader.GetAttrib();
+  const std::vector<tinyobj::shape_t>& shapes = reader.GetShapes();
+
+  std::array<int, 3> idcs = {
+    shapes[geomID].mesh.indices[3 * primID + 0].vertex_index,
+    shapes[geomID].mesh.indices[3 * primID + 1].vertex_index,
+    shapes[geomID].mesh.indices[3 * primID + 2].vertex_index
+  };
+  return idcs;
+}
 std::array<Vec3f, 3> Scene::collectTriangle(std::size_t geomID, std::size_t primID) const
 {
   return Hasty::collectTriangle(reader, geomID, primID);

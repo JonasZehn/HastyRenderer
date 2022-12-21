@@ -65,7 +65,7 @@ Currently the input format is quite simple, i.e. it the renderer takes two JSON 
 * [ ] GPU Path Tracer
 	* [x] Vulkan - Initial Compute Shaders
 	* [x] Vulkan - Build Acceleration Structures & Basic Ray Queries
-	* [ ] Create Image Comparison in Documentation
+	* [x] Create Image Comparison in Documentation
 	* [ ] Refactor Path Tracer to Share Features More Easily
 
 ## References
@@ -115,3 +115,12 @@ Currently the input format is quite simple, i.e. it the renderer takes two JSON 
 | Raw - 10 Samples per Pixel  | Denoised (Intel® Open Image Denoise)  |
 | ----------- | ----------- |
 | ![Output](images/not_denoised.jpg) | ![Output](images/denoised.jpg) | 
+
+## CPU vs GPU - Visualizing Progress of GPU Implementation
+| CPU  | GPU |
+| ----------- | ----------- |
+| ![Output](images/not_denoised.jpg) | ![Output](images/cornell_box_gpu_10_samples_gpu.jpg) |
+
+| | |
+| ----------- | ----------- |
+| ![physically based materials](images/physically_based_materials.jpg) | ![rgb dispersion](images/physically_based_materials_10_samples_gpu.jpg) | 

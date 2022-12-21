@@ -67,6 +67,7 @@ public:
   Ray constructRay(const SurfaceInteraction& interaction, const Vec3f& direction, bool outside);
   Ray constructRayEnd(const SurfaceInteraction& interaction, const Vec3f& end, bool outside);
   void rayHit(const Ray& ray, RayHit* rayhit);
+  BXDF& getBXDF(std::size_t geomID, std::size_t primID);
 protected:
   BXDF& getBXDF(const SurfaceInteraction& interaction);
   const BXDF& getBXDF(const SurfaceInteraction& interaction) const;
@@ -81,6 +82,12 @@ protected:
   const tinyobj::material_t& getMaterial(unsigned int geomID, unsigned int primID) const;
   const tinyobj::material_t& getMaterial(const RayHit& hit) const;
 public:
+  std::vector<std::size_t> getGeometryIDs() const;
+  const std::vector<float>& getVertices() const;
+  std::size_t getTriangleCount(std::size_t geomID) const;
+  std::array<int, 3> getTriangleVertexIndices(std::size_t geomID, std::size_t primID) const;
+  std::array<Vec3f, 3> collectTriangle(std::size_t geomID, std::size_t primID) const;
+  std::array<Vec3f, 3> collectTriangleNormals(std::size_t geomID, std::size_t primID) const;
   Vec3f getEmissionRadiance(const Vec3f& wo, unsigned int geomID, unsigned int primID) const;
   Vec3f getEmissionRadiance(const Vec3f& wo, const RayHit& hit) const;
   Vec3f getAlbedo(const SurfaceInteraction& interaction) const;
@@ -89,8 +96,6 @@ public:
   bool hasSurfaceLight() const;
   bool isSurfaceLight(const RayHit& hit) const;
   bool isInfiniteAreaLight(const RayHit& hit) const;
-  std::array<Vec3f, 3> collectTriangle(std::size_t geomID, std::size_t primID) const;
-  std::array<Vec3f, 3> collectTriangleNormals(std::size_t geomID, std::size_t primID) const;
   SurfaceInteraction sampleSurfaceLightPosition(RNG& rng, float* pDensity);
   Ray sampleLightRay(RNG& rng, Vec3f* flux);
   Ray sampleLightRayFromStartPoint(RNG& rng, const SurfaceInteraction& point, float* pDensity, RayHit *rayhit, bool *lightVisible);

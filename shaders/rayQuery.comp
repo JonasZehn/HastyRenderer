@@ -20,6 +20,22 @@ layout(binding = 4, set = 0, scalar) buffer Colors
 	vec3 colors[];
 };
 
+layout(binding = 5, scalar) uniform Camera {
+	vec3 position;
+	float fovSlope;
+    vec3 forward;
+    vec3 right;
+    vec3 up;
+} camera;
+
+
+vec3 cameraRay(vec2 pixelPosition, vec2 frameSize){
+	const vec2 lam = (2.0 * pixelPosition - vec2(frameSize) ) / frameSize.x;
+    vec3 rayDirection = camera.forward + camera.right * (camera.fovSlope * lam.x) + camera.up * (-camera.fovSlope * lam.y);
+	return rayDirection;
+}
+
+
 void main()
 {
 	ivec2 loc = ivec2(gl_GlobalInvocationID.xy);
@@ -27,14 +43,9 @@ void main()
 	ivec2 size = imageSize(resultImage);
 	ivec4 imageExtent = { 0, 0, size[0], size[1] };
 	
-	const vec3 cameraOrigin = vec3(0.0, 1.0, 5.5);
-	const float fovQ = 0.414214; // tan(0.5 * 45 Degrees)
-	vec3 rayOrigin = cameraOrigin;
-	 
     const vec2 pixelPosition = vec2(loc) + vec2(0.5);
-	const vec2 lam = (2.0 * pixelPosition - vec2(size) ) / size.x;
-	vec3 forward = vec3(0.0, 0.0, -1.0);
-    vec3 rayDirection = forward + vec3(fovQ * lam.x, -fovQ * lam.y, 0.0);
+	vec3 rayOrigin = camera.position;
+	vec3 rayDirection = cameraRay(pixelPosition, size);
 	
 	vec4 result = vec4(0.0);
 	

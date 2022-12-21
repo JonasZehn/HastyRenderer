@@ -1,6 +1,9 @@
 #include <Hasty/Vulkan.h>
 #include <Hasty/Image.h>
 #include <Hasty/File.h>
+#include <Hasty/RenderJob.h>
+#include <Hasty/BRDF.h>
+#include <Hasty/Scene.h>
 
 #include "VulkanInitializers.hpp"
 
@@ -9,6 +12,14 @@
 using namespace Hasty;
 
 #define _VK_HASTY_LOAD_FUNCTION(logicalDevice, x)  pfn ## _ ## x = reinterpret_cast<decltype(pfn ## _ ## x)>(vkGetDeviceProcAddr(logicalDevice, #x));
+
+struct CameraUniformBufferObject {
+  alignas(4) Vec3f position;
+  alignas(4) float fovSlope;
+  alignas(4) Vec3f forward;
+  alignas(4) Vec3f right;
+  alignas(4) Vec3f up;
+};
 
 class RaytracerPrototype {
 public:
@@ -60,40 +71,47 @@ public:
     _VK_HASTY_LOAD_FUNCTION(logicalDevice, vkGetAccelerationStructureDeviceAddressKHR);
   }
 
-  void transferMeshesToGPU() {
-
-    tinyobj::ObjReader reader;
-    reader.ParseFromFile("../assets/CornellBox.obj");
-
-    const std::vector<tinyobj::material_t>& materials = reader.GetMaterials();
-    std::vector<float> vertices = reader.GetAttrib().GetVertices();
+  void transferMeshesToGPU(Scene &scene) {
+    std::vector<float> vertices = scene.getVertices();
+    std::vector<std::size_t> geometryIDs = scene.getGeometryIDs();
     vertexCount = vertices.size() / 3;
-    const std::vector<tinyobj::shape_t>& shapes = reader.GetShapes();
-    assert(shapes.size() == 1);
-    int geomID = 0;
-    const tinyobj::shape_t& shape = shapes[geomID];
-
-    std::vector<uint32_t> indices;
-    indices.clear();
-    indices.reserve(shape.mesh.indices.size());
-    for (const tinyobj::index_t& index : shape.mesh.indices)
-    {
-      indices.push_back(index.vertex_index);
+    faceCount = 0;
+    for (std::size_t geometryID : geometryIDs) {
+      faceCount += scene.getTriangleCount(geometryID);
     }
-
-    faceCount = shape.mesh.num_face_vertices.size();
-
+    std::vector<uint32_t> indices;
+    indices.reserve(faceCount * 3);
     std::vector<float> colors;
     colors.reserve(faceCount * 3);
-    for (size_t primID = 0; primID < faceCount; primID++)
-    {
-      int materialId = shape.mesh.material_ids[primID];
-      const tinyobj::material_t& mat = materials[materialId];
+    std::size_t faceOffset = 0;
+    for (std::size_t geometryID : geometryIDs) {
+      std::size_t geometryFaceCount = scene.getTriangleCount(geometryID);
+      for (std::size_t primIndex = 0; primIndex < geometryFaceCount; primIndex++)
+      {
+        std::array<int, 3> tri = scene.getTriangleVertexIndices(geometryID, primIndex);
+        indices.push_back(tri[0]);
+        indices.push_back(tri[1]);
+        indices.push_back(tri[2]);
 
-      colors.push_back(mat.diffuse[0]);
-      colors.push_back(mat.diffuse[1]);
-      colors.push_back(mat.diffuse[2]);
+        BXDF& bxdf = scene.getBXDF(geometryID, primIndex);
+        PrincipledBRDF* principledBRDF = dynamic_cast<PrincipledBRDF*>(&bxdf);
+
+        Vec3f color(0.5f, 0.5f, 0.5f);
+        if (principledBRDF != nullptr) {
+          ITextureMap3f &albedoMap = principledBRDF->getAlbedo();
+          ConstantTexture3f* albedoConstant = dynamic_cast<ConstantTexture3f*>(&albedoMap);
+          if (albedoConstant != nullptr) {
+            color = albedoConstant->getValue();
+          }
+        }
+
+        colors.push_back(color[0]);
+        colors.push_back(color[1]);
+        colors.push_back(color[2]);
+      }
+      faceOffset += geometryFaceCount;
     }
+    assert(faceOffset == faceCount);
 
     std::size_t verticesByteCount = sizeof(float) * vertices.size();
     std::size_t indicesByteCount = sizeof(uint32_t) * indices.size();
@@ -104,11 +122,22 @@ public:
       | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
       | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
     vertexBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, verticesByteCount, bufferUsageFlags, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-    indexBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, indicesByteCount, bufferUsageFlags, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-    colorBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, colorsByteCount, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
     vertexBuffer->write((void*)vertices.data(), verticesByteCount);
+
+    indexBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, indicesByteCount, bufferUsageFlags, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
     indexBuffer->write((void*)indices.data(), indicesByteCount);
+
+    colorBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, colorsByteCount, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
     colorBuffer->write((void*)colors.data(), colorsByteCount);
+
+    CameraUniformBufferObject cameraData;
+    cameraData.position = scene.camera.getPosition();
+    cameraData.fovSlope = scene.camera.getFoVSlope();
+    cameraData.forward = scene.camera.getForward();
+    cameraData.up = scene.camera.getUp();
+    cameraData.right = scene.camera.getRight();
+    cameraUniformBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, sizeof(cameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+    cameraUniformBuffer->write((void*)&cameraData, sizeof(cameraData));
 
     deviceAndQueue->waitQueueIdle();
   }
@@ -295,6 +324,7 @@ public:
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1),
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1),
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1),
+      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1),
     };
     VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = vks::initializers::descriptorPoolCreateInfo(poolSizes, 1);
     VK_CHECK_RESULT(vkCreateDescriptorPool(logicalDevice, &descriptorPoolCreateInfo, nullptr, &descriptorPool));
@@ -305,6 +335,7 @@ public:
       vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 2),
       vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 3),
       vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 4),
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 5),
     };
 
     VkDescriptorSetLayoutCreateInfo descriptorLayout = vks::initializers::descriptorSetLayoutCreateInfo(setLayoutBindings);
@@ -321,16 +352,17 @@ public:
     VkDescriptorBufferInfo vertexDescriptorBufferInfo = vertexBuffer->descriptorBufferInfo();
     VkDescriptorBufferInfo indexDescriptorBufferInfo = indexBuffer->descriptorBufferInfo();
     VkDescriptorBufferInfo colorDescriptorBufferInfo = colorBuffer->descriptorBufferInfo();
+    VkDescriptorBufferInfo cameraDescriptorBufferInfo = cameraUniformBuffer->descriptorBufferInfo();
 
     std::vector<VkWriteDescriptorSet> computeWriteDescriptorSets = {
       writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 0, &writeDescriptorSetAccelerationStructureKHR),
       vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, &dstImage.getDescriptor()),
       vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2, &vertexDescriptorBufferInfo),
       vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3, &indexDescriptorBufferInfo),
-      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4, &colorDescriptorBufferInfo)
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4, &colorDescriptorBufferInfo),
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 5, &cameraDescriptorBufferInfo)
     };
     vkUpdateDescriptorSets(logicalDevice, computeWriteDescriptorSets.size(), computeWriteDescriptorSets.data(), 0, NULL);
-
 
     VkPipelineLayoutCreateInfo pPipelineLayoutCreateInfo = vks::initializers::pipelineLayoutCreateInfo(&descriptorSetLayout, 1);
 
@@ -368,21 +400,22 @@ public:
     // Build a single command buffer containing the compute dispatch commands
     buildComputeCommandBuffer(dstImage.getWidth(), dstImage.getHeight());
   }
-  void run() {
+  void run(RenderJob &job) {
+    VkDeviceSize render_width = job.renderSettings.width;
+    VkDeviceSize render_height = job.renderSettings.height;
+
     instance.init();
     deviceAndQueue = std::make_shared<VulkanComputeDeviceAndQueue>();
     deviceAndQueue->init(instance);
 
     loadFunctions(deviceAndQueue->getLogicalDevice());
 
-    VkDeviceSize render_width = 1280;
-    VkDeviceSize render_height = 720;
     Image4f image(render_width, render_height);
     VkDeviceSize bufferSizeBytes = render_width * render_height * 4 * sizeof(float);
 
     VulkanBuffer buffer(deviceAndQueue, bufferSizeBytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
-    transferMeshesToGPU();
+    transferMeshesToGPU(*job.scene);
     buildAccelerationStructure();
 
     VulkanImage gpuDstImage = allocateDeviceImage(deviceAndQueue, VK_FORMAT_R32G32B32A32_SFLOAT, image.getWidth(), image.getHeight(), VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
@@ -427,6 +460,8 @@ private:
   std::unique_ptr<VulkanBuffer> indexBuffer;
   std::unique_ptr<VulkanBuffer> colorBuffer;
 
+  std::unique_ptr<VulkanBuffer> cameraUniformBuffer;
+
   PFN_vkGetAccelerationStructureBuildSizesKHR pfn_vkGetAccelerationStructureBuildSizesKHR{ nullptr };
   PFN_vkCreateAccelerationStructureKHR pfn_vkCreateAccelerationStructureKHR{ nullptr };
   PFN_vkCmdBuildAccelerationStructuresKHR pfn_vkCmdBuildAccelerationStructuresKHR{ nullptr };
@@ -449,10 +484,34 @@ private:
   VkDescriptorSet descriptorSet{ nullptr };
 };
 
-int main(int argc, const char** argv)
+int main(int argc, char* argv[])
 {
+  if (argc != 3)
+  {
+    std::cout << " unexpected number of arguments: " << argc << " expecting 3, usage <binary> <renderJobFile> <outputDirectory> " << std::endl;
+    return 1;
+  }
+
+  std::filesystem::path outputFolder = argv[2];
+  if (!std::filesystem::is_directory(outputFolder))
+  {
+    std::cout << "error given output path " << outputFolder << " is not a directory " << std::endl;
+    return 1;
+  }
+
+  RenderJob job;
+  try
+  {
+    job.loadJSON(argv[1]);
+  }
+  catch (const std::exception& e)
+  {
+    std::cout << "exception: " << e.what() << std::endl;
+    return 2;
+  }
+
   RaytracerPrototype raytracer;
-  raytracer.run();
+  raytracer.run(job);
 
   return 0;
 }

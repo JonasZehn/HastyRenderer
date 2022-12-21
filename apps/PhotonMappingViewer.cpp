@@ -109,7 +109,7 @@ int main(int argc, char* argv[])
     SDL_RenderClear(renderer);
 
     computeEstimate(colorBuffers, image);
-    image *= std::pow(2.0f, job.scene->camera.exposure());
+    image *= std::pow(2.0f, job.scene->camera.getExposure());
 
     if (image.size() > 0)
     {
@@ -149,7 +149,7 @@ int main(int argc, char* argv[])
   Image3f normalImage, albedoImage;
 
   computeEstimate(colorBuffers, image);
-  image *= std::pow(2.0f, job.scene->camera.exposure());
+  image *= std::pow(2.0f, job.scene->camera.getExposure());
   computeEstimate(normalBuffers, normalImage);
   computeEstimate(albedoBuffers, albedoImage);
 

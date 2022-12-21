@@ -38,7 +38,7 @@ void Camera::setLookAt(const Vec3f& position, const Vec3f& lookAt)
   m_right = m_forward.cross(m_up);
 }
 // x goes to right, y goes to the bottom
-Ray Camera::ray(RNG &rng, const Vec2f& p, float frameWidth, float frameHeight)
+Ray Camera::computeRay(RNG &rng, const Vec2f& p, float frameWidth, float frameHeight)
 {
   bool depthOfField = m_apertureSize > 0.0f;
   if (depthOfField)
@@ -80,7 +80,7 @@ Ray Camera::ray(RNG &rng, const Vec2f& p, float frameWidth, float frameHeight)
     return Ray(origin, direction);
   }
 }
-float Camera::rayAngle(const Vec2f& p, float frameWidth, float frameHeight)
+float Camera::computeRayAngle(const Vec2f& p, float frameWidth, float frameHeight)
 {
   float x = p[0];
   float y = p[1];

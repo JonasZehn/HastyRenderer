@@ -584,16 +584,16 @@ float computeRadiusPixelFootPrint(RenderContext context, float defaultR, int i, 
   
   Vec2f p0(i, j);
   Vec2f offset(0.5f, 0.5f);
-  Ray ray = context.scene.camera.ray(context.rng, p0 + offset, float(width), float(height));
+  Ray ray = context.scene.camera.computeRay(context.rng, p0 + offset, float(width), float(height));
   RayHit rayhit;
   context.scene.rayHit(ray, &rayhit);
   if (!hasHitSurface(rayhit))
   {
     return defaultR;
   }
-  float angle = context.scene.camera.rayAngle(p0 + offset, float(width), float(height));
+  float angle = context.scene.camera.computeRayAngle(p0 + offset, float(width), float(height));
   float theta = std::abs(std::acos(-ray.direction().dot(rayhit.interaction.normalGeometric)));
-  float d = (context.scene.camera.position() - rayhit.interaction.x).norm();
+  float d = (context.scene.camera.getPosition() - rayhit.interaction.x).norm();
 
   if (!context.scene.hasBRDFDiffuseLobe(rayhit)) // if we hit purely specular surface, we should track down a diffuse surface...
   {
@@ -746,7 +746,7 @@ Image1f computeInitialRadiiTrace(RenderContext context, PMRenderJob& job, Photon
       {
         Vec2f p0(i, j);
         Vec2f offset(0.5f, 0.5f);
-        Ray ray = context.scene.camera.ray(context.rng, p0 + offset, float(job.renderSettings.width), float(job.renderSettings.height));
+        Ray ray = context.scene.camera.computeRay(context.rng, p0 + offset, float(job.renderSettings.width), float(job.renderSettings.height));
         RayHit rayhit;
         context.scene.rayHit(ray, &rayhit);
         if (!hasHitSurface(rayhit))
@@ -881,7 +881,7 @@ void renderPhotonThread(Image3fAccDoubleBuffer& colorBuffer, Image3fAccDoubleBuf
       for (uint32_t i = 0; i < job.renderSettings.width; i++)
       {
         Vec2f p0 = Vec2f(float(i), float(j));
-        Ray ray = scene.camera.ray(rng, p0 + sample.offset, float(job.renderSettings.width), float(job.renderSettings.height));
+        Ray ray = scene.camera.computeRay(rng, p0 + sample.offset, float(job.renderSettings.width), float(job.renderSettings.height));
         float radius = job.lock(i, j, radii(i, j));
         Vec3f normal, albedo;
         LightRayInfo lightRay;

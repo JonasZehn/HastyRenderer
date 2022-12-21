@@ -19,11 +19,16 @@ public:
 
   void setLookAt(const Vec3f& position, const Vec3f& lookAt);
   // x goes to right, y goes to the bottom
-  Ray ray(RNG &rng, const Vec2f& p, float frameWidth, float frameHeight);
-  float rayAngle(const Vec2f& p, float frameWidth, float frameHeight);
-  const Vec3f& position() const { return m_position; }
+  Ray computeRay(RNG &rng, const Vec2f& p, float frameWidth, float frameHeight);
+  float computeRayAngle(const Vec2f& p, float frameWidth, float frameHeight);
+  const Vec3f& getPosition() const { return m_position; }
+  float getFoVSlope() { return std::tan(0.5f * (float(Pi) * m_fovDegree / 180.0f)); }
+  Vec3f getForward() const { return m_forward; }
+  Vec3f getUp() const { return m_up; }
+  Vec3f getRight() const { return m_right; }
 
-  float exposure() const { return m_exposure; }
+  float getExposure() const { return m_exposure; }
+
 private:
   Vec3f m_position = Vec3f(0.f, 0.f, 0.f);
   Vec3f m_forward = Vec3f(0.f, 0.f, -1.f);

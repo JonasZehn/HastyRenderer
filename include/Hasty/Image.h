@@ -26,7 +26,6 @@ public:
   }
 
   void lock() { m_mutex.lock(); }
-  bool try_lock() { return m_mutex.try_lock(); }
   void unlock() { m_mutex.unlock(); }
 
   auto& getWriteBuffer() { return m_writeBuffer; }

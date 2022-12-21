@@ -125,7 +125,7 @@ void renderThread(Image3fAccDoubleBuffer& colorBuffer, Image3fAccDoubleBuffer& n
       for (uint32_t j = 0; j < job.renderSettings.height; j++)
       {
         Vec2f p0 = Vec2f(float(i), float(j));
-        Ray ray = scene.camera.ray(rng, p0 + sample.offset, float(job.renderSettings.width), float(job.renderSettings.height));
+        Ray ray = scene.camera.computeRay(rng, p0 + sample.offset, float(job.renderSettings.width), float(job.renderSettings.height));
         Vec3f normal, albedo;
         LightRayInfo rayInfo;
 

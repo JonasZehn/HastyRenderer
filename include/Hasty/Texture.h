@@ -46,6 +46,10 @@ public:
     return m_color;
   }
 
+  ResultType getValue() const {
+    return m_color;
+  }
+
 private:
   ResultType m_color;
 };

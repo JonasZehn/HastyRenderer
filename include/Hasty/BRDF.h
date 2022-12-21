@@ -127,6 +127,7 @@ public:
   ~PrincipledBRDF();
 
   float getIndexOfRefraction(int wavelength) const { return 1.0f; }
+  ITextureMap3f& getAlbedo() { return *albedo; }
   Vec3f getAlbedo(const SurfaceInteraction& interaction) const { return albedo->evaluate(interaction); }
   float cosTerm(const Vec3f& wo, const Vec3f& wi, const Vec3f& normalGeom, const Vec3f& normalShading, bool adjoint);
   Vec3f getShadingNormal(const SurfaceInteraction& interaction, const Vec3f& wo);
