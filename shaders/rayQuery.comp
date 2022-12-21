@@ -35,6 +35,52 @@ vec3 cameraRay(vec2 pixelPosition, vec2 frameSize){
 	return rayDirection;
 }
 
+struct HaltonSequence1 {
+	int b;
+	int n;
+	int d;
+};
+HaltonSequence1 HaltonSequence1Init(int b){
+	HaltonSequence1 result;
+	result.b = b;
+	result.n = 0;
+	result.d = 1;
+	return result;
+}
+float haltonSequence1Update(inout HaltonSequence1 seq){
+    int x = seq.d - seq.n;
+    if (x == 1)
+    {
+      seq.n = 1;
+      seq.d *= seq.b;
+    }
+    else
+    {
+      int y = seq.d / seq.b;
+      while (x <= y)
+      {
+        y /= seq.b;
+      }
+      seq.n = (seq.b + 1) * y - x;
+    }
+    return float(seq.n) / seq.d;
+}
+struct HaltonSequence2 {
+	HaltonSequence1 s1;
+	HaltonSequence1 s2;
+};
+HaltonSequence2 HaltonSequence2Init(){
+	HaltonSequence2 result;
+	result.s1 = HaltonSequence1Init(2);
+	result.s2 = HaltonSequence1Init(3);
+	return result;
+}
+vec2 HaltonSequence2Update(inout HaltonSequence2 seq){
+	vec2 result;
+	result.x = haltonSequence1Update(seq.s1);
+	result.y = haltonSequence1Update(seq.s2);
+	return result;
+}
 
 void main()
 {
@@ -43,37 +89,49 @@ void main()
 	ivec2 size = imageSize(resultImage);
 	ivec4 imageExtent = { 0, 0, size[0], size[1] };
 	
-    const vec2 pixelPosition = vec2(loc) + vec2(0.5);
 	vec3 rayOrigin = camera.position;
-	vec3 rayDirection = cameraRay(pixelPosition, size);
 	
-	vec4 result = vec4(0.0);
+	const int nSamples = 10;
 	
-	rayQueryEXT rayQuery;
-	rayQueryInitializeEXT(
-		rayQuery,
-		tlas,
-		gl_RayFlagsOpaqueEXT,
-		0xFF,
-		rayOrigin,
-		0.0,
-		rayDirection,
-		10000.0);
-	while(rayQueryProceedEXT(rayQuery))
-	{
-	}
+	vec3 sumSamples = vec3(0.0);
+	HaltonSequence2 pixelPositionSeq = HaltonSequence2Init();
+	for(int sampleIdx=0; sampleIdx < nSamples; sampleIdx++){
 	
-	if(rayQueryGetIntersectionTypeEXT(rayQuery, true) == gl_RayQueryCommittedIntersectionTriangleEXT)
-	{
-		const int primitiveID = rayQueryGetIntersectionPrimitiveIndexEXT(rayQuery, true);
+		vec3 result = vec3(0.0);
 		
-		result.xyz = colors[primitiveID];
+		const vec2 pixelPosition = vec2(loc) + HaltonSequence2Update(pixelPositionSeq);
+		vec3 rayDirection = cameraRay(pixelPosition, size);
+		
+		rayQueryEXT rayQuery;
+		rayQueryInitializeEXT(
+			rayQuery,
+			tlas,
+			gl_RayFlagsOpaqueEXT,
+			0xFF,
+			rayOrigin,
+			0.0,
+			rayDirection,
+			10000.0);
+		while(rayQueryProceedEXT(rayQuery))
+		{
+		}
+		
+		if(rayQueryGetIntersectionTypeEXT(rayQuery, true) == gl_RayQueryCommittedIntersectionTriangleEXT)
+		{
+			const int primitiveID = rayQueryGetIntersectionPrimitiveIndexEXT(rayQuery, true);
+			
+			result = colors[primitiveID];
+		}
+		
+		sumSamples += result;
 	}
-	result.a = 1.0;
+	
+	
+	vec4 estimate = vec4(sumSamples /  nSamples, 1.0);
 	
 	if(loc.x >= imageExtent[0] && loc.y >= imageExtent[1] 
 		&& loc.x < imageExtent[2] && loc.y < imageExtent[3])
 	{
-		imageStore(resultImage, loc, result);
+		imageStore(resultImage, loc, estimate);
 	}
 }
