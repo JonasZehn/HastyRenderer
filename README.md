@@ -123,4 +123,4 @@ Currently the input format is quite simple, i.e. it the renderer takes two JSON 
 
 | | |
 | ----------- | ----------- |
-| ![physically based materials](images/physically_based_materials.jpg) | ![rgb dispersion](images/physically_based_materials_10_samples_gpu.jpg) | 
+| ![physically based materials](images/physically_based_materials_10_samples_cpu.jpg) | ![rgb dispersion](images/physically_based_materials_10_samples_gpu.jpg) | 
