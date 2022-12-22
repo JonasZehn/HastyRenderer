@@ -23,17 +23,22 @@ layout(binding = 2, set = 0, scalar) buffer Indices
 	uint indices[];
 };
 
-layout(binding = 3, set = 0, scalar) buffer Materials
+layout(binding = 3, set = 0, scalar) buffer MaterialIndices
+{
+	uint materialIndices[];
+};
+
+layout(binding = 4, set = 0, scalar) buffer Materials
 {
 	Material materials[];
 };
 
-layout(binding = 4, set = 0, scalar) buffer RandomInputState
+layout(binding = 5, set = 0, scalar) buffer RandomInputState
 {
 	uint randomInputState[];
 };
 
-layout(binding = 5, scalar) uniform Camera {
+layout(binding = 6, scalar) uniform Camera {
 	vec3 position;
 	float fovSlope;
     vec3 forward;
@@ -41,14 +46,15 @@ layout(binding = 5, scalar) uniform Camera {
     vec3 up;
 } camera;
 
-layout(binding = 6, set = 0, rgba32f) uniform image2D outputImage;
-layout(binding = 7, set = 0, rgba32f) uniform image2D outputNormal;
-layout(binding = 8, set = 0, rgba32f) uniform image2D outputAlbedo;
+layout(binding = 7, set = 0, rgba32f) uniform image2D outputImage;
+layout(binding = 8, set = 0, rgba32f) uniform image2D outputNormal;
+layout(binding = 9, set = 0, rgba32f) uniform image2D outputAlbedo;
 
 
 vec3 cameraRay(vec2 pixelPosition, vec2 frameSize){
 	const vec2 lam = (2.0 * pixelPosition - vec2(frameSize) ) / frameSize.x;
     vec3 rayDirection = camera.forward + camera.right * (camera.fovSlope * lam.x) + camera.up * (-camera.fovSlope * lam.y);
+	rayDirection = normalize(rayDirection);
 	return rayDirection;
 }
 
@@ -224,6 +230,10 @@ SurfaceInteraction getSurfaceInteraction(rayQueryEXT rayQuery){
 	result.normal = normalize(m);
 	return result;
 }
+
+vec3 getEmissionRadiance(vec3 wo, vec3 normal, Material material){
+	return dot(wo, normal) >= 0.0 ? material.emission * InvPi : vec3(0.0);
+}
 void main()
 {
 	ivec2 size = imageSize(outputImage);
@@ -275,8 +285,11 @@ void main()
 				
 				if(rayQueryGetIntersectionTypeEXT(rayQuery, true) == gl_RayQueryCommittedIntersectionTriangleEXT)
 				{
+					vec3 wo = -rayDirection;
+					
 					SurfaceInteraction surfaceInteraction = getSurfaceInteraction(rayQuery);
-					Material material = materials[surfaceInteraction.primitiveID];
+					uint materialIdx = materialIndices[surfaceInteraction.primitiveID];
+					Material material = materials[materialIdx];
 					
 					if(depth == 0){
 						sumNormalSamples += surfaceInteraction.normal;
@@ -286,7 +299,7 @@ void main()
 					float probabilityDensity;
 					vec3 rayDirectionNew = sampleHemisphereCosImportance(rngState, surfaceInteraction.normal, probabilityDensity);
 					
-					result += throughput * (material.emission * InvPi);
+					result += throughput * getEmissionRadiance(wo, surfaceInteraction.normal, material);
 					throughput *= (material.albedo * InvPi) * abs(dot(rayDirectionNew, surfaceInteraction.normal)) / probabilityDensity;
 					
 					rayOrigin = surfaceInteraction.x + 1e-4 * surfaceInteraction.normal;

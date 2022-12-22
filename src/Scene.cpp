@@ -305,7 +305,9 @@ void Scene::rayHit(const Ray& ray, RayHit* rayhit)
   }
 }
 
-
+BXDF& Scene::getBXDFByIndex(uint32_t materialIndex) {
+  return *m_brdfs[materialIndex];
+}
 BXDF& Scene::getBXDF(std::size_t geomID, std::size_t primID)
 {
   const std::vector<tinyobj::shape_t>& shapes = reader.GetShapes();
@@ -346,6 +348,22 @@ float Scene::getIORInside(const RayHit& rayhit, int wavelength)
   return Scene::getBXDF(rayhit.interaction).getIndexOfRefraction(wavelength);
 }
 
+uint32_t Scene::getMaterialCount() const
+{
+  const std::vector<tinyobj::material_t>& materials = reader.GetMaterials();
+  return static_cast<uint32_t>(materials.size());
+}
+uint32_t Scene::getMaterialIndex(unsigned int geomID, unsigned int primID) const
+{
+  const std::vector<tinyobj::shape_t>& shapes = reader.GetShapes();
+  int materialId = shapes[geomID].mesh.material_ids[primID];
+  return materialId;
+}
+const tinyobj::material_t& Scene::getMaterialByIndex(unsigned int materialIndex) const
+{
+  const std::vector<tinyobj::material_t>& materials = reader.GetMaterials();
+  return materials[materialIndex];
+}
 const tinyobj::material_t& Scene::getMaterial(unsigned int geomID, unsigned int primID) const
 {
   const std::vector<tinyobj::shape_t>& shapes = reader.GetShapes();
@@ -398,8 +416,9 @@ std::array<Vec3f, 3> Scene::collectTriangleNormals(std::size_t geomID, std::size
 {
   return Hasty::collectTriangleNormals(reader, geomID, primID);
 }
-Vec3f Scene::getTriangleEmission(unsigned int geomID, unsigned int primID) const {
-  auto& material = getMaterial(geomID, primID);
+Vec3f Scene::getMaterialEmission(uint32_t materialIndex) const
+{
+  auto& material = getMaterialByIndex(materialIndex);
   Vec3f materialEmission(material.emission[0], material.emission[1], material.emission[2]);
   return materialEmission;
 }

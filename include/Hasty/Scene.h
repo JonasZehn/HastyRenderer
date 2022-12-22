@@ -67,6 +67,7 @@ public:
   Ray constructRay(const SurfaceInteraction& interaction, const Vec3f& direction, bool outside);
   Ray constructRayEnd(const SurfaceInteraction& interaction, const Vec3f& end, bool outside);
   void rayHit(const Ray& ray, RayHit* rayhit);
+  BXDF& getBXDFByIndex(uint32_t materialIndex);
   BXDF& getBXDF(std::size_t geomID, std::size_t primID);
 protected:
   BXDF& getBXDF(const SurfaceInteraction& interaction);
@@ -78,7 +79,11 @@ public:
   float evaluateSamplePDF(const RayHit& rayhit, const Vec3f& direction2);
   bool hasBRDFDiffuseLobe(const RayHit& rayhit);
   float getIORInside(const RayHit& rayhit, int wavelength);
+
+  uint32_t getMaterialCount() const;
+  uint32_t getMaterialIndex(unsigned int geomID, unsigned int primID) const;
 protected:
+  const tinyobj::material_t& getMaterialByIndex(unsigned int materialIndex) const;
   const tinyobj::material_t& getMaterial(unsigned int geomID, unsigned int primID) const;
   const tinyobj::material_t& getMaterial(const RayHit& hit) const;
 public:
@@ -88,7 +93,7 @@ public:
   std::array<int, 3> getTriangleVertexIndices(std::size_t geomID, std::size_t primID) const;
   std::array<Vec3f, 3> collectTriangle(std::size_t geomID, std::size_t primID) const;
   std::array<Vec3f, 3> collectTriangleNormals(std::size_t geomID, std::size_t primID) const;
-  Vec3f getTriangleEmission(unsigned int geomID, unsigned int primID) const;
+  Vec3f getMaterialEmission(uint32_t materialIndex) const;
   Vec3f getEmissionRadiance(const Vec3f& wo, unsigned int geomID, unsigned int primID) const;
   Vec3f getEmissionRadiance(const Vec3f& wo, const RayHit& hit) const;
   Vec3f getAlbedo(const SurfaceInteraction& interaction) const;

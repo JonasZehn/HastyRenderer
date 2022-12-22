@@ -28,8 +28,9 @@
 ## About the project
 
 I'm throwing together this pathtracer to learn more details about path tracing, the [Meson](https://mesonbuild.com/) build system, vcpkg and modern C++ features. The project fulfilled these goals, and now meson support has been discontinued due to the associated cost of upkeep.
-This project currently includes a unidirectional path tracer and a stochastic progressive photon mapper, both only have CPU implementations for now.
+This project currently includes a unidirectional path tracer and a stochastic progressive photon mapper, which are implemented on the CPU.
 [Intel Embree](https://www.embree.org/) is used for tracing rays and [Intel Open Image Denoise](https://www.openimagedenoise.org/) is used for denoising.
+I'm currently also working on a unidirectional path tracer running on the GPU using Vulkan 1.2 and hardware accelerated ray queries.
 
 
 ## Usage
