@@ -79,11 +79,19 @@ Currently the input format is quite simple, i.e. it the renderer takes two JSON 
 - [Stochastic Progressive Photon Mapping, 2009, T. Hachisuka, H. W. Jensen](https://dl.acm.org/doi/abs/10.1145/1661412.1618487)
 - [Physically Based Shading at Disney, 2012, B. Burley](https://media.disneyanimation.com/uploads/production/publication_asset/48/asset/s2012_pbs_disney_brdf_notes_v3.pdf)
 
+Vulkan:
 - [Vulkan 1.2 Spec](https://registry.khronos.org/vulkan/specs/1.2/html/)
 - [NVIDIA Vulkan Ray Tracing Tutorial](https://nvpro-samples.github.io/vk_raytracing_tutorial_KHR/)
 - [Vulkan C++ examples and demos - Sascha Willems](https://github.com/SaschaWillems/Vulkan)
 - [Overv / Vulkan Tutorial](https://vulkan-tutorial.com/)
 - [XDC 2020 | Ray-tracing in Vulkan: A brief overview of the provisional VK_KHR_ray_tracing API](https://www.youtube.com/watch?v=-FvAJmq8NvI)
+
+RNG:
+- [Hash Functions for GPU Rendering, 2020, Mark Jarzynski, Marc Olano](https://jcgt.org/published/0009/03/02/)
+- [Hash Functions for GPU Rendering, Nathan Reed](https://www.reedbeta.com/blog/hash-functions-for-gpu-rendering/)
+- [PCG - A Family of Simple Fast Space-Efficient Statistically Good Algorithms for Random Number Generation, Melissa E. O’Neill](https://www.cs.hmc.edu/tr/hmc-cs-2014-0905.pdf)
+- [Maximally equidistributed combined Tausworthe generators, Pierre L’Ecuyer](https://www.ams.org/journals/mcom/1996-65-213/S0025-5718-96-00696-5/)
+
 
  ## Useful Resources
 - [McGuire Computer Graphics Archive - Meshes](https://casual-effects.com/data/)
@@ -116,7 +124,7 @@ Currently the input format is quite simple, i.e. it the renderer takes two JSON 
 | ----------- | ----------- |
 | ![Output](images/not_denoised.jpg) | ![Output](images/denoised.jpg) | 
 
-## CPU vs GPU - Visualizing Progress of GPU Implementation
+## CPU vs GPU - Visualizing Progress of GPU Implementation - 10 Samples
 | CPU  | GPU |
 | ----------- | ----------- |
 | ![Output](images/not_denoised.jpg) | ![Output](images/cornell_box_gpu_10_samples_gpu.jpg) |

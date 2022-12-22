@@ -251,7 +251,7 @@ SurfaceInteraction Scene::getInteraction(unsigned int geomID, unsigned int primI
   }
 
   interaction.tangent = Vec3f(-interaction.x[2], 0.0f, interaction.x[0]);
-  interaction.tangent = orthonormalizedOtherwiseAnyOrthogonal(interaction.normalGeometric, interaction.tangent);
+  interaction.tangent = orthonormalizedOtherwiseAnyOrthonormal(interaction.normalGeometric, interaction.tangent);
   interaction.bitangent = interaction.normalGeometric.cross(interaction.tangent);
 
   return interaction;
@@ -397,6 +397,11 @@ std::array<Vec3f, 3> Scene::collectTriangle(std::size_t geomID, std::size_t prim
 std::array<Vec3f, 3> Scene::collectTriangleNormals(std::size_t geomID, std::size_t primID) const
 {
   return Hasty::collectTriangleNormals(reader, geomID, primID);
+}
+Vec3f Scene::getTriangleEmission(unsigned int geomID, unsigned int primID) const {
+  auto& material = getMaterial(geomID, primID);
+  Vec3f materialEmission(material.emission[0], material.emission[1], material.emission[2]);
+  return materialEmission;
 }
 Vec3f Scene::getEmissionRadiance(const Vec3f& wo, unsigned int geomID, unsigned int primID) const
 {

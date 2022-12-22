@@ -20,6 +20,10 @@ struct CameraUniformBufferObject {
   alignas(4) Vec3f right;
   alignas(4) Vec3f up;
 };
+struct MaterialUniformBufferObject {
+  alignas(4) Vec3f emission;
+  alignas(4) Vec3f albedo;
+};
 
 class RaytracerPrototype {
 public:
@@ -71,7 +75,7 @@ public:
     _VK_HASTY_LOAD_FUNCTION(logicalDevice, vkGetAccelerationStructureDeviceAddressKHR);
   }
 
-  void transferMeshesToGPU(Scene &scene) {
+  void transferDataToGPU(Scene &scene, uint32_t renderWidth, uint32_t renderHeight) {
     std::vector<float> vertices = scene.getVertices();
     std::vector<std::size_t> geometryIDs = scene.getGeometryIDs();
     vertexCount = vertices.size() / 3;
@@ -81,8 +85,8 @@ public:
     }
     std::vector<uint32_t> indices;
     indices.reserve(faceCount * 3);
-    std::vector<float> colors;
-    colors.reserve(faceCount * 3);
+    std::vector<MaterialUniformBufferObject> materials;
+    materials.reserve(faceCount * 3);
     std::size_t faceOffset = 0;
     for (std::size_t geometryID : geometryIDs) {
       std::size_t geometryFaceCount = scene.getTriangleCount(geometryID);
@@ -96,26 +100,42 @@ public:
         BXDF& bxdf = scene.getBXDF(geometryID, primIndex);
         PrincipledBRDF* principledBRDF = dynamic_cast<PrincipledBRDF*>(&bxdf);
 
-        Vec3f color(0.5f, 0.5f, 0.5f);
-        if (principledBRDF != nullptr) {
-          ITextureMap3f &albedoMap = principledBRDF->getAlbedo();
-          ConstantTexture3f* albedoConstant = dynamic_cast<ConstantTexture3f*>(&albedoMap);
-          if (albedoConstant != nullptr) {
-            color = albedoConstant->getValue();
+        MaterialUniformBufferObject material;
+        material.emission = scene.getTriangleEmission(geometryID, primIndex);
+        material.albedo = Vec3f(0.0f, 0.0f, 0.0f);
+        if (material.emission == Vec3f::Zero()) {
+          if (principledBRDF != nullptr) {
+            ITextureMap3f& albedoMap = principledBRDF->getAlbedo();
+            ConstantTexture3f* albedoConstant = dynamic_cast<ConstantTexture3f*>(&albedoMap);
+            if (albedoConstant != nullptr) {
+              material.albedo = albedoConstant->getValue();
+            }
           }
         }
 
-        colors.push_back(color[0]);
-        colors.push_back(color[1]);
-        colors.push_back(color[2]);
+        materials.push_back(material);
       }
       faceOffset += geometryFaceCount;
     }
     assert(faceOffset == faceCount);
 
+    uint64_t seed = 0;
+    RNG rng(seed);
+    std::vector<uint32_t> randomInputState;
+    int numUintsPerPixel = 3;
+    randomInputState.reserve(renderWidth * renderHeight * numUintsPerPixel);
+    for (int i = 0; i < renderWidth; i++) {
+      for (int j = 0; j < renderHeight; j++) {
+        for (int k = 0; k < numUintsPerPixel; k++) {
+          randomInputState.push_back( rng() );
+        }
+      }
+    }
+
     std::size_t verticesByteCount = sizeof(float) * vertices.size();
     std::size_t indicesByteCount = sizeof(uint32_t) * indices.size();
-    std::size_t colorsByteCount = sizeof(float) * colors.size();
+    std::size_t materialsByteCount = sizeof(MaterialUniformBufferObject) * materials.size();
+    std::size_t randomInputStateByteCount = sizeof(uint32_t) * randomInputState.size();
 
     const VkBufferUsageFlags bufferUsageFlags =
       VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
@@ -127,9 +147,12 @@ public:
     indexBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, indicesByteCount, bufferUsageFlags, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
     indexBuffer->write((void*)indices.data(), indicesByteCount);
 
-    colorBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, colorsByteCount, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-    colorBuffer->write((void*)colors.data(), colorsByteCount);
+    materialBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, materialsByteCount, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+    materialBuffer->write((void*)materials.data(), materialsByteCount);
 
+    randomInputStateBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, randomInputStateByteCount, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+    randomInputStateBuffer->write((void*)randomInputState.data(), randomInputStateByteCount);
+    
     CameraUniformBufferObject cameraData;
     cameraData.position = scene.camera.getPosition();
     cameraData.fovSlope = scene.camera.getFoVSlope();
@@ -315,27 +338,35 @@ public:
     VK_CHECK_RESULT(vkEndCommandBuffer(commandBuffer));
   }
 
-  void preprareCompute(const std::shared_ptr<VulkanComputeDeviceAndQueue>& deviceAndQueue, VulkanImage& dstImage) {
+  void preprareCompute(const std::shared_ptr<VulkanComputeDeviceAndQueue>& deviceAndQueue, VulkanImage& resultImage, VulkanImage& normalImage, VulkanImage& albedoImage) {
     VkDevice logicalDevice = deviceAndQueue->getLogicalDevice();
 
     std::vector<VkDescriptorPoolSize> poolSizes = {
-      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1),
-      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1),
-      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1),
-      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1),
-      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1),
-      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1),
+      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1),  // tlas
+      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1), // Vertices
+      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1), // Indices
+      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1), // Materials
+      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1), // RandomInputState
+      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1), // Camera Input
+      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1), // outputImage
+      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1), // outputNormal
+      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1), // outputAlbedo
     };
     VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = vks::initializers::descriptorPoolCreateInfo(poolSizes, 1);
     VK_CHECK_RESULT(vkCreateDescriptorPool(logicalDevice, &descriptorPoolCreateInfo, nullptr, &descriptorPool));
 
+    int bindingCounter = 0;
+
     std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
-      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, VK_SHADER_STAGE_COMPUTE_BIT, 0),
-      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 1),
-      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 2),
-      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 3),
-      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 4),
-      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 5),
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, VK_SHADER_STAGE_COMPUTE_BIT, 0), // tlas
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 1),  // Vertices
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 2), // Indices
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 3), // Materials
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 4), // RandomInputState
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 5), // Camera Input
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 6), // outputImage
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 7), // outputNormal
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 8), // outputAlbedo
     };
 
     VkDescriptorSetLayoutCreateInfo descriptorLayout = vks::initializers::descriptorSetLayoutCreateInfo(setLayoutBindings);
@@ -351,16 +382,20 @@ public:
 
     VkDescriptorBufferInfo vertexDescriptorBufferInfo = vertexBuffer->descriptorBufferInfo();
     VkDescriptorBufferInfo indexDescriptorBufferInfo = indexBuffer->descriptorBufferInfo();
-    VkDescriptorBufferInfo colorDescriptorBufferInfo = colorBuffer->descriptorBufferInfo();
+    VkDescriptorBufferInfo materialDescriptorBufferInfo = materialBuffer->descriptorBufferInfo();
+    VkDescriptorBufferInfo randomInputStateDescriptorBufferInfo = randomInputStateBuffer->descriptorBufferInfo();
     VkDescriptorBufferInfo cameraDescriptorBufferInfo = cameraUniformBuffer->descriptorBufferInfo();
 
     std::vector<VkWriteDescriptorSet> computeWriteDescriptorSets = {
-      writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 0, &writeDescriptorSetAccelerationStructureKHR),
-      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, &dstImage.getDescriptor()),
-      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2, &vertexDescriptorBufferInfo),
-      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3, &indexDescriptorBufferInfo),
-      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4, &colorDescriptorBufferInfo),
-      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 5, &cameraDescriptorBufferInfo)
+      writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 0, &writeDescriptorSetAccelerationStructureKHR), // tlas
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, &vertexDescriptorBufferInfo),  // Vertices
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2, &indexDescriptorBufferInfo),  // Indices
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3, &materialDescriptorBufferInfo), // Materials
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4, &randomInputStateDescriptorBufferInfo), // RandomInputState
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 5, &cameraDescriptorBufferInfo), // Camera Input
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 6, &resultImage.getDescriptor()), // outputImage
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 7, &normalImage.getDescriptor()), // outputNormal
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 8, &albedoImage.getDescriptor()), // outputAlbedo
     };
     vkUpdateDescriptorSets(logicalDevice, computeWriteDescriptorSets.size(), computeWriteDescriptorSets.data(), 0, NULL);
 
@@ -398,11 +433,11 @@ public:
     VK_CHECK_RESULT(vkCreateSemaphore(logicalDevice, &semaphoreCreateInfo, nullptr, &semaphore));
 
     // Build a single command buffer containing the compute dispatch commands
-    buildComputeCommandBuffer(dstImage.getWidth(), dstImage.getHeight());
+    buildComputeCommandBuffer(resultImage.getWidth(), resultImage.getHeight());
   }
   void run(RenderJob &job) {
-    VkDeviceSize render_width = job.renderSettings.width;
-    VkDeviceSize render_height = job.renderSettings.height;
+    VkDeviceSize renderWidth = job.renderSettings.width;
+    VkDeviceSize renderHeight = job.renderSettings.height;
 
     instance.init();
     deviceAndQueue = std::make_shared<VulkanComputeDeviceAndQueue>();
@@ -410,17 +445,24 @@ public:
 
     loadFunctions(deviceAndQueue->getLogicalDevice());
 
-    Image4f image(render_width, render_height);
-    VkDeviceSize bufferSizeBytes = render_width * render_height * 4 * sizeof(float);
+    Image4f image(renderWidth, renderHeight);
+    VkDeviceSize bufferSizeBytes = renderWidth * renderHeight * 4 * sizeof(float);
 
-    VulkanBuffer buffer(deviceAndQueue, bufferSizeBytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    VulkanBuffer imageBuffer(deviceAndQueue, bufferSizeBytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
-    transferMeshesToGPU(*job.scene);
+    transferDataToGPU(*job.scene, renderWidth, renderHeight);
     buildAccelerationStructure();
 
-    VulkanImage gpuDstImage = allocateDeviceImage(deviceAndQueue, VK_FORMAT_R32G32B32A32_SFLOAT, image.getWidth(), image.getHeight(), VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
-    deviceAndQueue->transitionImageLayout(gpuDstImage, VK_IMAGE_LAYOUT_GENERAL);
-    preprareCompute(deviceAndQueue, gpuDstImage);
+    VulkanImage gpuResultImage = allocateDeviceImage(deviceAndQueue, VK_FORMAT_R32G32B32A32_SFLOAT, image.getWidth(), image.getHeight(), VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
+    deviceAndQueue->transitionImageLayout(gpuResultImage, VK_IMAGE_LAYOUT_GENERAL);
+
+    VulkanImage gpuNormalImage = allocateDeviceImage(deviceAndQueue, VK_FORMAT_R32G32B32A32_SFLOAT, image.getWidth(), image.getHeight(), VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
+    deviceAndQueue->transitionImageLayout(gpuNormalImage, VK_IMAGE_LAYOUT_GENERAL);
+
+    VulkanImage gpuAlbedoImage = allocateDeviceImage(deviceAndQueue, VK_FORMAT_R32G32B32A32_SFLOAT, image.getWidth(), image.getHeight(), VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
+    deviceAndQueue->transitionImageLayout(gpuAlbedoImage, VK_IMAGE_LAYOUT_GENERAL);
+
+    preprareCompute(deviceAndQueue, gpuResultImage, gpuNormalImage, gpuAlbedoImage);
 
     // Wait for rendering finished
     VkPipelineStageFlags waitStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
@@ -433,19 +475,36 @@ public:
     computeSubmitInfo.pWaitDstStageMask = &waitStageMask;
     computeSubmitInfo.signalSemaphoreCount = 1;
     computeSubmitInfo.pSignalSemaphores = &semaphore;
+    std::cout << " submitting" << std::endl;
     VK_CHECK_RESULT(vkQueueSubmit(deviceAndQueue->getQueue(), 1, &computeSubmitInfo, VK_NULL_HANDLE));
 
     deviceAndQueue->waitQueueIdle();
 
-    deviceAndQueue->transitionImageLayout(gpuDstImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    deviceAndQueue->transitionImageLayout(gpuResultImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    deviceAndQueue->transitionImageLayout(gpuNormalImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    deviceAndQueue->transitionImageLayout(gpuAlbedoImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
-    VulkanFence fence(deviceAndQueue);
-    deviceAndQueue->copyImageToBuffer(gpuDstImage, buffer, fence);
-    deviceAndQueue->waitForFence(fence);
-
-    buffer.read(image.data(), bufferSizeBytes);
-
-    Hasty::writeEXR(image, "output.exr");
+    {
+      VulkanFence fence(deviceAndQueue);
+      deviceAndQueue->copyImageToBuffer(gpuResultImage, imageBuffer, fence);
+      deviceAndQueue->waitForFence(fence);
+      imageBuffer.read(image.data(), bufferSizeBytes);
+      Hasty::writeEXR(image, "output.exr");
+    }
+    {
+      VulkanFence fence(deviceAndQueue);
+      deviceAndQueue->copyImageToBuffer(gpuNormalImage, imageBuffer, fence);
+      deviceAndQueue->waitForFence(fence);
+      imageBuffer.read(image.data(), bufferSizeBytes);
+      Hasty::writeEXR(image, "outputNormal.exr");
+    }
+    {
+      VulkanFence fence(deviceAndQueue);
+      deviceAndQueue->copyImageToBuffer(gpuAlbedoImage, imageBuffer, fence);
+      deviceAndQueue->waitForFence(fence);
+      imageBuffer.read(image.data(), bufferSizeBytes);
+      Hasty::writeEXR(image, "outputAlbedo.exr");
+    }
 
     destroy();
   }
@@ -458,7 +517,8 @@ private:
   std::size_t vertexCount;
   std::size_t faceCount;
   std::unique_ptr<VulkanBuffer> indexBuffer;
-  std::unique_ptr<VulkanBuffer> colorBuffer;
+  std::unique_ptr<VulkanBuffer> materialBuffer;
+  std::unique_ptr<VulkanBuffer> randomInputStateBuffer;
 
   std::unique_ptr<VulkanBuffer> cameraUniformBuffer;
 
@@ -510,8 +570,16 @@ int main(int argc, char* argv[])
     return 2;
   }
 
-  RaytracerPrototype raytracer;
-  raytracer.run(job);
+  try
+  {
+    RaytracerPrototype raytracer;
+    raytracer.run(job);
+  }
+  catch (const std::exception& e)
+  {
+    std::cout << "exception: " << e.what() << std::endl;
+    return 3;
+  }
 
   return 0;
 }

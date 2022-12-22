@@ -476,7 +476,7 @@ inline Vec3f anyOrthonormal(const Vec3f& v1Normalized)
   }
 }
 
-inline Vec3f orthonormalizedOtherwiseAnyOrthogonal(const Vec3f& v1Normalized, const Vec3f& v2)
+inline Vec3f orthonormalizedOtherwiseAnyOrthonormal(const Vec3f& v1Normalized, const Vec3f& v2)
 {
   assertUnitLength(v1Normalized);
   Vec3f result = v2 - v2.dot(v1Normalized) * v1Normalized;

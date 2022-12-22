@@ -88,6 +88,7 @@ public:
   std::array<int, 3> getTriangleVertexIndices(std::size_t geomID, std::size_t primID) const;
   std::array<Vec3f, 3> collectTriangle(std::size_t geomID, std::size_t primID) const;
   std::array<Vec3f, 3> collectTriangleNormals(std::size_t geomID, std::size_t primID) const;
+  Vec3f getTriangleEmission(unsigned int geomID, unsigned int primID) const;
   Vec3f getEmissionRadiance(const Vec3f& wo, unsigned int geomID, unsigned int primID) const;
   Vec3f getEmissionRadiance(const Vec3f& wo, const RayHit& hit) const;
   Vec3f getAlbedo(const SurfaceInteraction& interaction) const;

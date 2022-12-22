@@ -77,13 +77,13 @@ target_link_libraries(
         benchmark::benchmark_main)
 target_compile_definitions(HastyBenchmarks PUBLIC BENCHMARK_STATIC_DEFINE=1)
 
-add_executable(VulkanRaytracePrototype "apps/VulkanRaytracePrototype.cpp")
+add_executable(VulkanPathTracePrototype "apps/VulkanPathTracePrototype.cpp")
 target_link_libraries(
-    VulkanRaytracePrototype
+    VulkanPathTracePrototype
     PUBLIC
         tinyobjloader::tinyobjloader
         libHastyRenderer
     )
-target_include_directories(VulkanRaytracePrototype PRIVATE ${CMAKE_CURRENT_LIST_DIR}/apps)
-target_compile_definitions(VulkanRaytracePrototype PRIVATE "HASTY_SHADER_PATH=std::filesystem::path(\"${CMAKE_CURRENT_LIST_DIR}/shaders\")")
+target_include_directories(VulkanPathTracePrototype PRIVATE ${CMAKE_CURRENT_LIST_DIR}/apps)
+target_compile_definitions(VulkanPathTracePrototype PRIVATE "HASTY_SHADER_PATH=std::filesystem::path(\"${CMAKE_CURRENT_LIST_DIR}/shaders\")")
 

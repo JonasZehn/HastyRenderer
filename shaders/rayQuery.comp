@@ -1,23 +1,36 @@
 #version 460
 #extension GL_EXT_ray_query : require
 #extension GL_EXT_scalar_block_layout : require
- 
+
+const float Pi = 3.14159265358979323846;
+const float InvPi = 0.318309886183790671;
+
+struct Material {
+	vec3 emission;
+	vec3 albedo;
+};
+
 layout(local_size_x = 4, local_size_y = 4, local_size_z = 1) in;
 
 layout(binding = 0, set = 0) uniform accelerationStructureEXT tlas;
-layout(binding = 1, set = 0, rgba32f) uniform image2D resultImage;
 
-layout(binding = 2, set = 0, scalar) buffer Vertices
+layout(binding = 1, set = 0, scalar) buffer Vertices
 {
 	vec3 vertices[];
 };
-layout(binding = 3, set = 0, scalar) buffer Indices
+layout(binding = 2, set = 0, scalar) buffer Indices
 {
 	uint indices[];
 };
-layout(binding = 4, set = 0, scalar) buffer Colors
+
+layout(binding = 3, set = 0, scalar) buffer Materials
 {
-	vec3 colors[];
+	Material materials[];
+};
+
+layout(binding = 4, set = 0, scalar) buffer RandomInputState
+{
+	uint randomInputState[];
 };
 
 layout(binding = 5, scalar) uniform Camera {
@@ -27,6 +40,10 @@ layout(binding = 5, scalar) uniform Camera {
     vec3 right;
     vec3 up;
 } camera;
+
+layout(binding = 6, set = 0, rgba32f) uniform image2D outputImage;
+layout(binding = 7, set = 0, rgba32f) uniform image2D outputNormal;
+layout(binding = 8, set = 0, rgba32f) uniform image2D outputAlbedo;
 
 
 vec3 cameraRay(vec2 pixelPosition, vec2 frameSize){
@@ -82,56 +99,220 @@ vec2 HaltonSequence2Update(inout HaltonSequence2 seq){
 	return result;
 }
 
+struct RNGState {
+	uint s1;
+	uint s2;
+	uint s3;
+	uint b;
+};
+
+// [Maximally equidistributed combined Tausworthe generators, Pierre L’Ecuyer](https://www.ams.org/journals/mcom/1996-65-213/S0025-5718-96-00696-5/)
+uint QuickTausInit(uint k, uint q, uint seed){
+	uint r = 32 - k;
+	uint mask = uint(0xFFFFFFFF) >> r;
+	uint A = seed & mask;
+	uint B = (((A << q) ^ A) >> k);
+	A = A ^ B;
+	return A;
+}
+void QuickTausUpdate(inout uint A, inout uint B, uint k, uint q, uint kMinusS, uint C, uint s)
+{
+	B = (((A << q) ^ A) >> kMinusS);
+	A = (((A & C) << s) ^ B);
+}
+
+RNGState RNGStateInit(uint seed0, uint seed1, uint seed2){
+	RNGState result;
+	result.s1 = QuickTausInit(31, 13, seed0);
+	result.s2 = QuickTausInit(29, 2, seed1);
+	result.s3 = QuickTausInit(28, 3, seed2);
+	result.b = 0;
+	return result;
+}
+uint RNGStateUpdate(inout RNGState rngState)
+{
+	QuickTausUpdate(rngState.s1, rngState.b, 31, 13, 19, 4294967294, 12);
+	QuickTausUpdate(rngState.s2, rngState.b, 29, 2, 25, 4294967288, 4);
+	QuickTausUpdate(rngState.s3, rngState.b, 28, 3, 11, 4294967280, 17);
+    return rngState.s1 ^ rngState.s2 ^ rngState.s3;
+}
+float uniform01f(inout RNGState rngState){
+	uint randomNumber = RNGStateUpdate(rngState);
+	return randomNumber * 2.3283064365386962890625e-10; // 2^-32
+}
+
+vec3 orthonormalized(vec3 v1Normalized, vec3 v2)
+{
+	vec3 result = v2 - dot(v2, v1Normalized) * v1Normalized;
+	return normalize(result);
+}
+
+vec3 anyOrthonormal(vec3 v1Normalized)
+{
+	if (v1Normalized.x < 0.7f)
+	{
+		return orthonormalized(v1Normalized, vec3(1.0f, 0.0f, 0.0f));
+	}
+	else
+	{
+		return orthonormalized(v1Normalized, vec3(0.0f, 1.0f, 0.0f));
+	}
+}
+
+vec3 smallestRotationBetweenTwoVectors(vec3 vFrom, vec3 vTo, vec3 x){
+	
+    float cosAngle = dot(vFrom, vTo);
+    float onePlusCosAngle = 1.0 + cosAngle;
+	// v_rot = x * cos(angle) + (k sin(angle) cross x + (k sin(angle) )  ( (k sin(angle) ) dot x ) / (1 + cos(angle))
+	vec3 kSinAngle = cross(vFrom, vTo);
+	vec3 kOrthogonal = anyOrthonormal(vFrom); // find rotation axis so we don't invert volume
+	bool inversion = abs(onePlusCosAngle) <= 1e-5;
+	float a = inversion ? -1.0 : cosAngle;
+	vec3 b = inversion ? vec3(0.0) : kSinAngle;
+	vec3 c = inversion ? kOrthogonal : kSinAngle;
+	vec3 d = inversion ? (kOrthogonal * 2.0) : (kSinAngle / onePlusCosAngle);
+	return x * a + cross(b, x) + c * dot(d, x);
+}
+
+vec3 sampleHemisphereCosImportance(inout RNGState rngState, vec3 normal, out float pDensity)
+{
+	vec3 dir;
+	float costheta;
+	do
+	{
+		float xi1 = uniform01f(rngState);
+		float xi2 = uniform01f(rngState);
+
+		float phi = 2.0 * Pi * xi2;
+		costheta = sqrt(xi1);
+		float sintheta = sqrt(1.0 - xi1); // std::sqrt(1.0f - costheta * costheta);
+		float cosphi = cos(phi);
+		float sinphi = sin(phi); // you cannot use sqrt(1 - cosphi*cosphi) here you are gonna loose the sign
+		vec3 rv = vec3(sintheta * cosphi, sintheta * sinphi, costheta);
+
+		dir = smallestRotationBetweenTwoVectors( vec3(0.0, 0.0, 1.0), normal, rv);
+		dir = normalize(dir);
+		costheta = dot(dir, normal);
+	} while (costheta <= 0.0f); // stay clear from numerical mistakes
+
+	pDensity = InvPi * costheta;
+	return dir;
+}
+
+struct SurfaceInteraction {
+	int primitiveID;
+	vec3 x;
+	vec3 normal;
+};
+SurfaceInteraction getSurfaceInteraction(rayQueryEXT rayQuery){
+	SurfaceInteraction result;
+	
+	result.primitiveID = rayQueryGetIntersectionPrimitiveIndexEXT(rayQuery, true);
+	vec2 barycentrics = rayQueryGetIntersectionBarycentricsEXT(rayQuery, true);
+	
+	uint vtxIdx0 = indices[3 * result.primitiveID];
+	uint vtxIdx1 = indices[3 * result.primitiveID + 1];
+	uint vtxIdx2 = indices[3 * result.primitiveID + 2];
+
+	vec3 v0 = vertices[vtxIdx0];
+	vec3 v1 = vertices[vtxIdx1];
+	vec3 v2 = vertices[vtxIdx2];
+	
+	result.x = (1.0 - barycentrics[0] - barycentrics[1]) * v0 + barycentrics[0] * v1 + barycentrics[1] * v2;
+	
+	vec3 m = cross(v1 - v0, v2 - v0);
+	result.normal = normalize(m);
+	return result;
+}
 void main()
 {
+	ivec2 size = imageSize(outputImage);
 	ivec2 loc = ivec2(gl_GlobalInvocationID.xy);
+	uint pixelLinearIndex = size[0] * loc[1] + loc[0];
 	
-	ivec2 size = imageSize(resultImage);
+	uint seed0 = randomInputState[3 * pixelLinearIndex + 0];
+	uint seed1 = randomInputState[3 * pixelLinearIndex + 1];
+	uint seed2 = randomInputState[3 * pixelLinearIndex + 2];
+	
+	RNGState rngState = RNGStateInit(seed0, seed1, seed2);
+	
 	ivec4 imageExtent = { 0, 0, size[0], size[1] };
-	
-	vec3 rayOrigin = camera.position;
-	
-	const int nSamples = 10;
-	
-	vec3 sumSamples = vec3(0.0);
-	HaltonSequence2 pixelPositionSeq = HaltonSequence2Init();
-	for(int sampleIdx=0; sampleIdx < nSamples; sampleIdx++){
-	
-		vec3 result = vec3(0.0);
-		
-		const vec2 pixelPosition = vec2(loc) + HaltonSequence2Update(pixelPositionSeq);
-		vec3 rayDirection = cameraRay(pixelPosition, size);
-		
-		rayQueryEXT rayQuery;
-		rayQueryInitializeEXT(
-			rayQuery,
-			tlas,
-			gl_RayFlagsOpaqueEXT,
-			0xFF,
-			rayOrigin,
-			0.0,
-			rayDirection,
-			10000.0);
-		while(rayQueryProceedEXT(rayQuery))
-		{
-		}
-		
-		if(rayQueryGetIntersectionTypeEXT(rayQuery, true) == gl_RayQueryCommittedIntersectionTriangleEXT)
-		{
-			const int primitiveID = rayQueryGetIntersectionPrimitiveIndexEXT(rayQuery, true);
-			
-			result = colors[primitiveID];
-		}
-		
-		sumSamples += result;
-	}
-	
-	
-	vec4 estimate = vec4(sumSamples /  nSamples, 1.0);
 	
 	if(loc.x >= imageExtent[0] && loc.y >= imageExtent[1] 
 		&& loc.x < imageExtent[2] && loc.y < imageExtent[3])
 	{
-		imageStore(resultImage, loc, estimate);
+		const int nSamples = 10;
+		
+		vec3 sumSamples = vec3(0.0);
+		vec3 sumNormalSamples = vec3(0.0);
+		vec3 sumAlbedoSamples = vec3(0.0);
+		
+		HaltonSequence2 pixelPositionSeq = HaltonSequence2Init();
+		for(int sampleIdx=0; sampleIdx < nSamples; sampleIdx++){
+		
+			vec3 result = vec3(0.0);
+			vec3 throughput = vec3(1.0);
+			
+			const vec2 pixelPosition = vec2(loc) + HaltonSequence2Update(pixelPositionSeq);
+			vec3 rayOrigin = camera.position;
+			vec3 rayDirection = cameraRay(pixelPosition, size);
+			
+			for(int depth = 0; depth < 5; depth++){
+				
+				rayQueryEXT rayQuery;
+				rayQueryInitializeEXT(
+					rayQuery,
+					tlas,
+					gl_RayFlagsOpaqueEXT,
+					0xFF,
+					rayOrigin,
+					1e-5,
+					rayDirection,
+					10000.0);
+				while(rayQueryProceedEXT(rayQuery))
+				{
+				}
+				
+				if(rayQueryGetIntersectionTypeEXT(rayQuery, true) == gl_RayQueryCommittedIntersectionTriangleEXT)
+				{
+					SurfaceInteraction surfaceInteraction = getSurfaceInteraction(rayQuery);
+					Material material = materials[surfaceInteraction.primitiveID];
+					
+					if(depth == 0){
+						sumNormalSamples += surfaceInteraction.normal;
+						sumAlbedoSamples += material.albedo;
+					}
+					
+					float probabilityDensity;
+					vec3 rayDirectionNew = sampleHemisphereCosImportance(rngState, surfaceInteraction.normal, probabilityDensity);
+					
+					result += throughput * (material.emission * InvPi);
+					throughput *= (material.albedo * InvPi) * abs(dot(rayDirectionNew, surfaceInteraction.normal)) / probabilityDensity;
+					
+					rayOrigin = surfaceInteraction.x + 1e-4 * surfaceInteraction.normal;
+					rayDirection = rayDirectionNew;
+				} else {
+					break;
+				}
+				
+				float rouletteP = depth > 2 ? 0.35 : 0.0;
+				if(uniform01f(rngState) < rouletteP){
+					break;
+				}
+				throughput /= (1.0 - rouletteP);
+			}
+			
+			
+			sumSamples += result;
+		}
+	
+	
+		vec4 estimate = vec4(sumSamples /  nSamples, 1.0);
+		vec4 normalEstimate = vec4(sumNormalSamples /  nSamples, 1.0);
+		vec4 albedoEstimate = vec4(sumAlbedoSamples /  nSamples, 1.0);
+	
+		imageStore(outputImage, loc, estimate);
+		imageStore(outputNormal, loc, normalEstimate);
+		imageStore(outputAlbedo, loc, albedoEstimate);
 	}
 }
