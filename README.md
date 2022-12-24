@@ -125,11 +125,11 @@ RNG:
 | ----------- | ----------- |
 | ![Output](images/not_denoised.jpg) | ![Output](images/denoised.jpg) | 
 
-## CPU vs GPU - Visualizing Progress of GPU Implementation - 10 Samples
-| CPU  | GPU |
+## CPU vs GPU - Visualizing Progress of GPU Implementation
+| CPU - 10 Samples | GPU - 500 Samples |
 | ----------- | ----------- |
-| ![Output](images/not_denoised.jpg) | ![Output](images/cornell_box_gpu_10_samples_gpu.jpg) |
+| ![Output](images/not_denoised.jpg) | ![Output](images/cornell_box_gpu_500_samples_gpu.jpg) |
 
 | | |
 | ----------- | ----------- |
-| ![physically based materials](images/physically_based_materials_10_samples_cpu.jpg) | ![rgb dispersion](images/physically_based_materials_10_samples_gpu.jpg) | 
+| ![physically based materials](images/physically_based_materials_10_samples_cpu.jpg) | ![rgb dispersion](images/physically_based_materials_500_samples_gpu.jpg) | 

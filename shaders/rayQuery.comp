@@ -8,6 +8,7 @@ const float InvPi = 0.318309886183790671;
 
 struct Material {
 	vec3 emission;
+	float specular;
 };
 
 layout(local_size_x = 4, local_size_y = 4, local_size_z = 1) in;
@@ -41,13 +42,15 @@ layout(binding = 5, set = 0, scalar) buffer Materials
 // https://github.com/SaschaWillems/Vulkan/tree/master/data/shaders/glsl/descriptorindexing
 
 layout(binding = 6, set = 0) uniform sampler2D albedoTextures[];
+layout(binding = 7, set = 0) uniform sampler2D metallicTextures[];
+layout(binding = 8, set = 0) uniform sampler2D roughnessTextures[];
 
-layout(binding = 7, set = 0, scalar) buffer RandomInputState
+layout(binding = 9, set = 0, scalar) buffer RandomInputState
 {
 	uint randomInputState[];
 };
 
-layout(binding = 8, scalar) uniform Camera {
+layout(binding = 10, scalar) uniform Camera {
 	vec3 position;
 	float fovSlope;
     vec3 forward;
@@ -55,9 +58,9 @@ layout(binding = 8, scalar) uniform Camera {
     vec3 up;
 } camera;
 
-layout(binding = 9, set = 0, rgba32f) uniform image2D outputImage;
-layout(binding = 10, set = 0, rgba32f) uniform image2D outputNormal;
-layout(binding = 11, set = 0, rgba32f) uniform image2D outputAlbedo;
+layout(binding = 11, set = 0, rgba32f) uniform image2D outputImage;
+layout(binding = 12, set = 0, rgba32f) uniform image2D outputNormal;
+layout(binding = 13, set = 0, rgba32f) uniform image2D outputAlbedo;
 
 
 vec3 cameraRay(vec2 pixelPosition, vec2 frameSize){
@@ -164,7 +167,7 @@ vec3 orthonormalized(vec3 v1Normalized, vec3 v2)
 
 vec3 anyOrthonormal(vec3 v1Normalized)
 {
-	if (v1Normalized.x < 0.7f)
+	if (abs(v1Normalized.x) < 0.7f)
 	{
 		return orthonormalized(v1Normalized, vec3(1.0f, 0.0f, 0.0f));
 	}
@@ -200,7 +203,7 @@ vec3 sampleHemisphereCosImportance(inout RNGState rngState, vec3 normal, out flo
 
 		float phi = 2.0 * Pi * xi2;
 		costheta = sqrt(xi1);
-		float sintheta = sqrt(1.0 - xi1); // std::sqrt(1.0f - costheta * costheta);
+		float sintheta = sqrt(1.0 - xi1); // sqrt(1.0f - costheta * costheta);
 		float cosphi = cos(phi);
 		float sinphi = sin(phi); // you cannot use sqrt(1 - cosphi*cosphi) here you are gonna loose the sign
 		vec3 rv = vec3(sintheta * cosphi, sintheta * sinphi, costheta);
@@ -217,8 +220,11 @@ vec3 sampleHemisphereCosImportance(inout RNGState rngState, vec3 normal, out flo
 struct SurfaceInteraction {
 	int primitiveID;
 	vec3 x;
-	vec3 normal;
+	vec3 normalGeometric;
 	vec2 uv;
+	vec2 uvInverted;
+	vec3 tangent;
+	vec3 bitangent;
 };
 SurfaceInteraction getSurfaceInteraction(rayQueryEXT rayQuery){
 	SurfaceInteraction result;
@@ -241,15 +247,152 @@ SurfaceInteraction getSurfaceInteraction(rayQueryEXT rayQuery){
 	
 	result.x = b0 * v0 + barycentrics[0] * v1 + barycentrics[1] * v2;
 	result.uv = b0 * uv0 + barycentrics[0] * uv1 + barycentrics[1] * uv2;
+	result.uvInverted = vec2(result.uv.x, 1.0 - result.uv.y);
 	
 	vec3 m = cross(v1 - v0, v2 - v0);
-	result.normal = normalize(m);
+	result.normalGeometric = normalize(m);
+	
+	result.tangent = anyOrthonormal(result.normalGeometric);
+	result.bitangent = cross(result.normalGeometric, result.tangent);
+	
 	return result;
 }
 
 vec3 getEmissionRadiance(vec3 wo, vec3 normal, Material material){
 	return dot(wo, normal) >= 0.0 ? material.emission * InvPi : vec3(0.0);
 }
+
+
+struct MaterialEvalResult
+{
+  vec3 fDiffuse;
+  vec3 fSpecular;
+  vec3 normalShading;
+  vec3 debug;
+};
+
+MaterialEvalResult MaterialEvalResultInit(vec3 d, vec3 s, vec3 n)
+{
+	MaterialEvalResult result;
+	result.fDiffuse = d;
+	result.fSpecular = s;
+	result.normalShading = n;
+	return result;
+}
+
+float PrincipledBRDFcomputeAlpha(float roughness)
+{
+	float alpha = roughness * roughness;
+	if (alpha < 1e-2f && alpha != 0.0f)
+	{
+		alpha = 1e-2f;
+	}
+	return alpha;
+}
+
+void PrincipledBRDFcomputeProbability(float metallicHit, float specularHit, out float diffSpecMix, out float pProbablitySpec)
+{
+	diffSpecMix = min(1.0f - metallicHit, 1.0f - 0.5f * specularHit); // we want this to be zero when metallic and one when specular = 0
+	pProbablitySpec = 1.0f - diffSpecMix;
+}
+
+vec3 getShadingNormal(SurfaceInteraction interaction, vec3 wo){
+	return interaction.normalGeometric;
+}
+float square(float f){ return f*f; }
+
+
+float DGGX(float nh, float th, float bh, float alpha_t, float alpha_b)
+{
+  float D = float(InvPi) / (alpha_t * alpha_b * square(square(th / alpha_t) + square(bh / alpha_b) + square(nh)));
+  return D;
+}
+
+float smithGGX(float nv, float tv, float bv, float alpha_t, float alpha_b)
+{
+  float lambda = 0.5f * ( sqrt(1.0f + (square(alpha_t * tv) + square(alpha_b * bv))/square(nv))  - 1.0f);
+  return 1.0f / (1.0f + lambda);
+}
+
+void PrincipledBRDFcomputeAnisotropyParameters(SurfaceInteraction interaction, vec3 normalShading, float alpha, float anisotropy, out float alpha_t, out float alpha_b, out vec3 tangent, out vec3 bitangent)
+{
+  float aspect = sqrt(1.0f - 0.9f * anisotropy);
+  alpha_t = alpha / aspect;
+  alpha_b = alpha * aspect;
+  tangent = smallestRotationBetweenTwoVectors(interaction.normalGeometric, normalShading, interaction.tangent);
+  bitangent = smallestRotationBetweenTwoVectors(interaction.normalGeometric, normalShading, interaction.bitangent);
+}
+
+// adjoint = false
+MaterialEvalResult principledBRDFevaluate(SurfaceInteraction interaction, vec3 albedoHit, float metallicHit, float specularHit, float roughnessHit, float anisotropy, vec3 wo, vec3 wi)
+{
+	
+	const float alpha = PrincipledBRDFcomputeAlpha(roughnessHit);
+	
+	float diffuseSpecMix, pSpecularStrategy;
+	PrincipledBRDFcomputeProbability(metallicHit, specularHit, diffuseSpecMix, pSpecularStrategy);
+
+	vec3 normalShading = getShadingNormal(interaction, wo);
+	if (dot(wo, normalShading) <= 0.0f)
+	{
+		return MaterialEvalResultInit(vec3(0.0), vec3(0.0), normalShading);
+	}
+	MaterialEvalResult result = MaterialEvalResultInit(vec3(0.0), vec3(0.0), normalShading);
+	vec3 normalGeometric = interaction.normalGeometric;
+	float normalScale = max(0.0f, dot(wi, normalShading)) / (1e-7f + abs(dot(wi, normalGeometric)));
+
+	//DIFFUSE
+	{
+		result.fDiffuse = albedoHit * float(InvPi) * diffuseSpecMix * normalScale; // we use a Lambertian model here to keep it energy conserving
+	}
+	//SPECULAR
+	{
+		vec3 h = normalize(wo + wi);
+		float lh = abs(dot(wi, h));
+		vec3 Ks = vec3(1.0);
+		vec3 F0 = mix(Ks, albedoHit, metallicHit);
+
+		vec3 FH = F0 + (vec3(1.0) - F0) * pow(1.0f - lh, 5.0);
+
+		float nh = dot(normalShading, h);
+
+		float alpha_t, alpha_b;
+		vec3 tangent, bitangent;
+		PrincipledBRDFcomputeAnisotropyParameters(interaction, normalShading, alpha, anisotropy, alpha_t, alpha_b, tangent, bitangent);
+		
+		float nv = abs(dot(normalShading, wo));
+		float nl = abs(dot(normalShading, wi));
+		float Go = smithGGX(nv, dot(tangent, wo), dot(bitangent, wo), alpha_t, alpha_b);
+		float Gi = smithGGX(nl, dot(tangent, wi), dot(bitangent, wi), alpha_t, alpha_b);
+		float G = Go * Gi;
+		
+		float D_ggx;
+
+		if (alpha == 0.0f)
+		{
+			if (abs(abs(nh) - 1.0f) < 1e-3f) // D_GGX explodes for alpha= 0 and nh = 1
+			{
+				// we can find this by using importance sample formula and then let alpha go to zero?, G is always 1 in that case
+				// => \int F D G/ (4 nv nl) dl ~= 1/N \sum_i  F D Gi Go/ (4 nv nl_i  p(l_i) )
+				//           ~= 1/N \sum_i  F / nv ~=   F / nv for alpha = 0
+				D_ggx = 4.0f * nl;
+			}
+			else
+			{
+				D_ggx = 0.0f;
+			}
+		}
+		else
+		{
+			D_ggx = DGGX(nh, dot(tangent, h), dot(bitangent, h), alpha_t, alpha_b);
+		}
+
+		result.fSpecular = FH * (D_ggx * G * normalScale / abs(1e-7f + 4.0f * nv * nl) * (1.0f - diffuseSpecMix));
+	}
+
+	return result;
+}
+
 void main()
 {
 	ivec2 size = imageSize(outputImage);
@@ -267,7 +410,7 @@ void main()
 	if(loc.x >= imageExtent[0] && loc.y >= imageExtent[1] 
 		&& loc.x < imageExtent[2] && loc.y < imageExtent[3])
 	{
-		const int nSamples = 10;
+		const int nSamples = 500;
 		
 		vec3 sumSamples = vec3(0.0);
 		vec3 sumNormalSamples = vec3(0.0);
@@ -301,26 +444,36 @@ void main()
 				
 				if(rayQueryGetIntersectionTypeEXT(rayQuery, true) == gl_RayQueryCommittedIntersectionTriangleEXT)
 				{
-					vec3 wo = -rayDirection;
-					
 					SurfaceInteraction surfaceInteraction = getSurfaceInteraction(rayQuery);
 					uint materialIdx = materialIndices[surfaceInteraction.primitiveID];
 					Material material = materials[materialIdx];
 					
-					vec3 albedo = texture(albedoTextures[materialIdx], vec2(surfaceInteraction.uv.x, 1.0 - surfaceInteraction.uv.y)).xyz;
+					vec3 albedoHit = texture(albedoTextures[materialIdx], surfaceInteraction.uvInverted).xyz;
 					
 					if(depth == 0){
-						sumNormalSamples += surfaceInteraction.normal;
-						sumAlbedoSamples += albedo;
+						sumNormalSamples += surfaceInteraction.normalGeometric;
+						sumAlbedoSamples += albedoHit;
 					}
 					
 					float probabilityDensity;
-					vec3 rayDirectionNew = sampleHemisphereCosImportance(rngState, surfaceInteraction.normal, probabilityDensity);
+					vec3 rayDirectionNew = sampleHemisphereCosImportance(rngState, surfaceInteraction.normalGeometric, probabilityDensity);
 					
-					result += throughput * getEmissionRadiance(wo, surfaceInteraction.normal, material);
-					throughput *= (albedo * InvPi) * abs(dot(rayDirectionNew, surfaceInteraction.normal)) / probabilityDensity;
+					vec3 wo = -rayDirection;
+					vec3 wi = rayDirectionNew;
 					
-					rayOrigin = surfaceInteraction.x + 1e-4 * surfaceInteraction.normal;
+					const float metallicHit = texture(metallicTextures[materialIdx], surfaceInteraction.uvInverted).x;
+					const float roughnessHit = texture(roughnessTextures[materialIdx], surfaceInteraction.uvInverted).x;
+					const float specularHit = material.specular;
+					const float anisotropy = 0.0;
+					
+					MaterialEvalResult evalResult = principledBRDFevaluate(surfaceInteraction, albedoHit, metallicHit, specularHit, roughnessHit, anisotropy, wo, wi);
+					
+					result += throughput * getEmissionRadiance(wo, surfaceInteraction.normalGeometric, material);
+					
+					vec3 fMat = (evalResult.fDiffuse + evalResult.fSpecular);
+					throughput *= fMat * abs(dot(rayDirectionNew, surfaceInteraction.normalGeometric)) / probabilityDensity;
+					
+					rayOrigin = surfaceInteraction.x + 1e-4 * surfaceInteraction.normalGeometric;
 					rayDirection = rayDirectionNew;
 				} else {
 					break;

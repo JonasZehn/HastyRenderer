@@ -466,7 +466,7 @@ inline Vec3f orthonormalized(const Vec3f& v1Normalized, const Vec3f& v2)
 inline Vec3f anyOrthonormal(const Vec3f& v1Normalized)
 {
   assertUnitLength(v1Normalized);
-  if (v1Normalized[0] < 0.7f)
+  if (std::abs(v1Normalized[0]) < 0.7f)
   {
     return orthonormalized(v1Normalized, Vec3f(1.0f, 0.0f, 0.0f));
   }

@@ -127,9 +127,15 @@ public:
   ~PrincipledBRDF();
 
   float getIndexOfRefraction(int wavelength) const { return 1.0f; }
-  ITextureMap3f& getAlbedo() { return *albedo; }
+  const ITextureMap3f& getAlbedo() const { return *albedo; }
   Vec3f getAlbedo(const SurfaceInteraction& interaction) const { return albedo->evaluate(interaction); }
   float cosTerm(const Vec3f& wo, const Vec3f& wi, const Vec3f& normalGeom, const Vec3f& normalShading, bool adjoint);
+
+  const ITextureMap1f& getRoughness() const { return *roughness; }
+  const ITextureMap1f& getMetallic() const { return *metallic; }
+
+  float getSpecular() const { return specular; }
+
   Vec3f getShadingNormal(const SurfaceInteraction& interaction, const Vec3f& wo);
   float computeAlpha(float roughness);
   void computeProbability(float metallicHit, float* diffSpecMix, float* pProbablitySpec);

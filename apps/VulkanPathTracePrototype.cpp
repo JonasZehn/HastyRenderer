@@ -9,6 +9,8 @@
 
 #include <tiny_obj_loader.h>
 
+#include <variant>
+
 using namespace Hasty;
 
 #define _VK_HASTY_LOAD_FUNCTION(logicalDevice, x)  pfn ## _ ## x = reinterpret_cast<decltype(pfn ## _ ## x)>(vkGetDeviceProcAddr(logicalDevice, #x));
@@ -22,6 +24,21 @@ struct CameraUniformBufferObject {
 };
 struct MaterialUniformBufferObject {
   alignas(4) Vec3f emission;
+  alignas(4) float specular;
+};
+
+
+template<typename _PixelType>
+struct VulkanPixelTraits {
+
+};
+template<>
+struct VulkanPixelTraits < float > {
+  static const VkFormat Format = VK_FORMAT_R32_SFLOAT;
+};
+template<>
+struct VulkanPixelTraits<Vec4f> {
+  static const VkFormat Format = VK_FORMAT_R32G32B32A32_SFLOAT;
 };
 
 class RaytracerPrototype {
@@ -74,6 +91,71 @@ public:
     _VK_HASTY_LOAD_FUNCTION(logicalDevice, vkGetAccelerationStructureDeviceAddressKHR);
   }
 
+  template<typename _PixelType>
+  void allocateAndTransferImageToGPUAndTransitionLayout(const Image<_PixelType> &imageCPU, std::unique_ptr<VulkanBuffer> &imageBuffer, std::unique_ptr<VulkanImage> &imageGPU, VkImageLayout finalImageLayout) {
+    std::size_t imageByteCount = sizeof(_PixelType) * imageCPU.size();
+    imageBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, imageByteCount, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+    imageBuffer->write((void *) imageCPU.data(), imageByteCount);
+
+    imageGPU = std::make_unique<VulkanImage>(
+      deviceAndQueue,
+      imageCPU.getWidth(),
+      imageCPU.getHeight(),
+      VulkanPixelTraits<_PixelType>::Format,
+      VK_IMAGE_TILING_OPTIMAL,
+      VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+      VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    deviceAndQueue->transitionImageLayout(*imageGPU, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    deviceAndQueue->copyBufferToImage(*imageBuffer, *imageGPU);
+
+    deviceAndQueue->transitionImageLayout(*imageGPU, finalImageLayout);
+  }
+
+  // value type for a constant value or a pointer to a large existing image
+  template<typename _PixelType>
+  struct ImagePtrOrConstant {
+    typedef Image<_PixelType> ValueType;
+    typedef Image<_PixelType> const* PtrType;
+
+    ImagePtrOrConstant(ValueType val):value(val) {
+    }
+    ImagePtrOrConstant(PtrType ptr):value(ptr) {
+
+    }
+
+    Image<_PixelType> const* getPtr() const { 
+      if (std::holds_alternative<ValueType>(value)  ) {
+        return &std::get<ValueType>(value);
+      } else{
+        return std::get<PtrType>(value);
+      }
+    }
+
+  private:
+    std::variant<ValueType, PtrType> value;
+  };
+
+  template<typename _PixelType>
+  ImagePtrOrConstant<_PixelType> getImagePointer(ITextureMap<_PixelType> const * textureMap) {
+    ConstantTexture<_PixelType> const* constantTexture = dynamic_cast<ConstantTexture<_PixelType> const*>(textureMap);
+    Texture<_PixelType> const* texture = dynamic_cast<Texture<_PixelType> const*>(textureMap);
+
+    if (constantTexture != nullptr) {
+      Image<_PixelType> constantImage(1, 1);
+      constantImage(0, 0) = constantTexture->getValue();
+      return constantImage;
+    }
+    else if (texture != nullptr) {
+      return &texture->getImage();
+    }
+    else {
+      throw std::runtime_error("unsupported/not implemented input texture");
+    }
+    return nullptr;
+  }
+
   void transferDataToGPU(Scene &scene, uint32_t renderWidth, uint32_t renderHeight) {
     std::vector<float> vertices = scene.getVertices();
     std::vector<std::size_t> geometryIDs = scene.getGeometryIDs();
@@ -98,54 +180,43 @@ public:
 
       MaterialUniformBufferObject material;
       material.emission = scene.getMaterialEmission(materialIdx);
+      material.specular = 0.5f;
 
-      Image3f constantImage(1, 1);
-      constantImage(0, 0) = Vec3f::Zero();
-      Image3f const * albedoImage3 = &constantImage;
+      Image1f constImage1f(1, 1);
+      constImage1f(0, 0) = 0.0f;
+      Image3f constImage3f(1, 1);
+      constImage3f(0, 0) = Vec3f::Zero();
+
+      ImagePtrOrConstant<Vec3f> albedoImage3(constImage3f);
+      ImagePtrOrConstant<float> metallicImage(constImage1f);
+      ImagePtrOrConstant<float> roughnessImage(constImage1f);
       if (material.emission == Vec3f::Zero()) {
         if (principledBRDF != nullptr) {
-          ITextureMap3f& albedoMap = principledBRDF->getAlbedo();
-          ConstantTexture3f* albedoConstant = dynamic_cast<ConstantTexture3f*>(&albedoMap);
-          Texture3f* albedoTexture = dynamic_cast<Texture3f*>(&albedoMap);
+          albedoImage3 = getImagePointer<Vec3f>(&principledBRDF->getAlbedo());
+          metallicImage = getImagePointer<float>(&principledBRDF->getMetallic());
+          roughnessImage = getImagePointer<float>(&principledBRDF->getRoughness());
 
-          if (albedoConstant != nullptr) {
-            constantImage(0, 0) = albedoConstant->getValue();
-            albedoImage3 = &constantImage;
-          }
-          else if (albedoTexture != nullptr) {
-            albedoImage3 = &albedoTexture->getImage();
-          }
-          else {
-            throw std::runtime_error("unsupported/not implemented input texture");
-          }
+          material.specular = principledBRDF->getSpecular();
         }
       }
 
       materials.push_back(material);
 
-      Image4f albedoImage4 = addAlphaChannel(*albedoImage3);
 
-      std::size_t albedoImageByteCount = sizeof(float) * 4 * albedoImage4.getWidth() * albedoImage4.getHeight();
-      albedoImageBuffers.emplace_back(std::make_unique<VulkanBuffer>(deviceAndQueue, albedoImageByteCount, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
-      VulkanBuffer& albedoImageBuffer = *albedoImageBuffers.back();
-      
-      albedoImageBuffer.write(albedoImage4.data(), albedoImageByteCount);
+      Image4f albedoImage4 = addAlphaChannel(*(albedoImage3.getPtr()));
 
-      albedoImages.emplace_back(std::make_unique<VulkanImage>(
-        deviceAndQueue,
-        albedoImage4.getWidth(),
-        albedoImage4.getHeight(),
-        VK_FORMAT_R32G32B32A32_SFLOAT,
-        VK_IMAGE_TILING_OPTIMAL,
-        VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
+      albedoImageBuffers.emplace_back();
+      albedoImages.emplace_back();
+      allocateAndTransferImageToGPUAndTransitionLayout<Vec4f>(albedoImage4, albedoImageBuffers.back(), albedoImages.back(), VK_IMAGE_LAYOUT_GENERAL);
 
-      VulkanImage& albedoImageGPU = *albedoImages.back();
+      metallicImageBuffers.emplace_back();
+      metallicImages.emplace_back();
+      allocateAndTransferImageToGPUAndTransitionLayout<float>(*metallicImage.getPtr(), metallicImageBuffers.back(), metallicImages.back(), VK_IMAGE_LAYOUT_GENERAL);
 
-      deviceAndQueue->transitionImageLayout(albedoImageGPU, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-      deviceAndQueue->copyBufferToImage(albedoImageBuffer, albedoImageGPU);
+      roughnessImageBuffers.emplace_back();
+      roughnessImages.emplace_back();
+      allocateAndTransferImageToGPUAndTransitionLayout<float>(*roughnessImage.getPtr(), roughnessImageBuffers.back(), roughnessImages.back(), VK_IMAGE_LAYOUT_GENERAL);
 
-      deviceAndQueue->transitionImageLayout(albedoImageGPU, VK_IMAGE_LAYOUT_GENERAL);
     }
 
     std::size_t faceOffset = 0;
@@ -413,7 +484,9 @@ public:
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1), // Indices
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1), // MaterialIndices
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1), // Materials
-      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, albedoImages.size()), // AlbedoImages
+      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, albedoImages.size()), // albedoTextures
+      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, metallicImages.size()), // metallicTextures
+      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, roughnessImages.size()), // roughnessTextures
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1), // RandomInputState
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1), // Camera Input
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1), // outputImage
@@ -430,12 +503,14 @@ public:
       vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 3), // Indices
       vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 4), // MaterialIndices
       vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 5), // Materials
-      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_COMPUTE_BIT, 6, albedoImages.size()), // AlbedoImages
-      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 7), // RandomInputState
-      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 8), // Camera Input
-      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 9), // outputImage
-      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 10), // outputNormal
-      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 11), // outputAlbedo
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_COMPUTE_BIT, 6, albedoImages.size()), // albedoTextures
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_COMPUTE_BIT, 7, metallicImages.size()), // metallicTextures
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_COMPUTE_BIT, 8, roughnessImages.size()), // roughnessTextures
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 9), // RandomInputState
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 10), // Camera Input
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 11), // outputImage
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 12), // outputNormal
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 13), // outputAlbedo
     };
 
     VkDescriptorSetLayoutCreateInfo descriptorLayout = vks::initializers::descriptorSetLayoutCreateInfo(setLayoutBindings);
@@ -460,6 +535,16 @@ public:
       albedoImagesDescriptorBufferInfos[i] = albedoImages[i]->getDescriptor();
     }
 
+    std::vector<VkDescriptorImageInfo> metallicImagesDescriptorBufferInfos(metallicImages.size());
+    for (size_t i = 0; i < metallicImages.size(); i++) {
+      metallicImagesDescriptorBufferInfos[i] = metallicImages[i]->getDescriptor();
+    }
+
+    std::vector<VkDescriptorImageInfo> roughnessImagesDescriptorBufferInfos(roughnessImages.size());
+    for (size_t i = 0; i < roughnessImages.size(); i++) {
+      roughnessImagesDescriptorBufferInfos[i] = roughnessImages[i]->getDescriptor();
+    }
+
     VkDescriptorBufferInfo randomInputStateDescriptorBufferInfo = randomInputStateBuffer->descriptorBufferInfo();
     VkDescriptorBufferInfo cameraDescriptorBufferInfo = cameraUniformBuffer->descriptorBufferInfo();
 
@@ -470,12 +555,14 @@ public:
       vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3, &indexDescriptorBufferInfo),  // Indices
       vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4, &materialIndicesDescriptorBufferInfo), // MaterialIndices
       vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 5, &materialDescriptorBufferInfo), // Materials
-      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 6, albedoImagesDescriptorBufferInfos.data(), albedoImagesDescriptorBufferInfos.size()), // AlbedoImages
-      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 7, &randomInputStateDescriptorBufferInfo), // RandomInputState
-      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 8, &cameraDescriptorBufferInfo), // Camera Input
-      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 9, &resultImage.getDescriptor()), // outputImage
-      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 10, &normalImage.getDescriptor()), // outputNormal
-      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 11, &albedoImage.getDescriptor()), // outputAlbedo
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 6, albedoImagesDescriptorBufferInfos.data(), albedoImagesDescriptorBufferInfos.size()), // albedoTextures
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 7, metallicImagesDescriptorBufferInfos.data(), metallicImages.size()), // metallicTextures
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 8, roughnessImagesDescriptorBufferInfos.data(), roughnessImages.size()), // roughnessTextures
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 9, &randomInputStateDescriptorBufferInfo), // RandomInputState
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10, &cameraDescriptorBufferInfo), // Camera Input
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 11, &resultImage.getDescriptor()), // outputImage
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 12, &normalImage.getDescriptor()), // outputNormal
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 13, &albedoImage.getDescriptor()), // outputAlbedo
     };
     vkUpdateDescriptorSets(logicalDevice, computeWriteDescriptorSets.size(), computeWriteDescriptorSets.data(), 0, nullptr);
 
@@ -603,6 +690,10 @@ private:
   std::unique_ptr<VulkanBuffer> randomInputStateBuffer;
   std::vector<std::unique_ptr<VulkanBuffer> > albedoImageBuffers;
   std::vector<std::unique_ptr<VulkanImage> > albedoImages;
+  std::vector<std::unique_ptr<VulkanBuffer> > metallicImageBuffers;
+  std::vector<std::unique_ptr<VulkanImage> > metallicImages;
+  std::vector<std::unique_ptr<VulkanBuffer> > roughnessImageBuffers;
+  std::vector<std::unique_ptr<VulkanImage> > roughnessImages;
 
   std::unique_ptr<VulkanBuffer> cameraUniformBuffer;
 
