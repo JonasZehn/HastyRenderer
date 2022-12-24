@@ -307,7 +307,7 @@ void main()
 					uint materialIdx = materialIndices[surfaceInteraction.primitiveID];
 					Material material = materials[materialIdx];
 					
-					vec3 albedo = texture(albedoTextures[materialIdx], surfaceInteraction.uv).xyz;
+					vec3 albedo = texture(albedoTextures[materialIdx], vec2(surfaceInteraction.uv.x, 1.0 - surfaceInteraction.uv.y)).xyz;
 					
 					if(depth == 0){
 						sumNormalSamples += surfaceInteraction.normal;
