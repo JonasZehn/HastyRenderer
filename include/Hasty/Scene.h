@@ -91,6 +91,9 @@ public:
   const std::vector<float>& getVertices() const;
   std::size_t getTriangleCount(std::size_t geomID) const;
   std::array<int, 3> getTriangleVertexIndices(std::size_t geomID, std::size_t primID) const;
+  std::optional< std::array<Vec2f, 3> > getTriangleUV(std::size_t geomID, std::size_t primID) const {
+    return collectTriangleUV(reader, geomID, primID);
+  }
   std::array<Vec3f, 3> collectTriangle(std::size_t geomID, std::size_t primID) const;
   std::array<Vec3f, 3> collectTriangleNormals(std::size_t geomID, std::size_t primID) const;
   Vec3f getMaterialEmission(uint32_t materialIndex) const;

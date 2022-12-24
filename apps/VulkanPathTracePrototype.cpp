@@ -22,7 +22,6 @@ struct CameraUniformBufferObject {
 };
 struct MaterialUniformBufferObject {
   alignas(4) Vec3f emission;
-  alignas(4) Vec3f albedo;
 };
 
 class RaytracerPrototype {
@@ -83,6 +82,8 @@ public:
     for (std::size_t geometryID : geometryIDs) {
       faceCount += scene.getTriangleCount(geometryID);
     }
+    std::vector<Vec2f> textureCoordinates;
+    textureCoordinates.reserve(faceCount * 3);
     std::vector<uint32_t> indices;
     indices.reserve(faceCount * 3);
     std::vector<uint32_t> materialIndices;
@@ -97,18 +98,54 @@ public:
 
       MaterialUniformBufferObject material;
       material.emission = scene.getMaterialEmission(materialIdx);
-      material.albedo = Vec3f(0.0f, 0.0f, 0.0f);
+
+      Image3f constantImage(1, 1);
+      constantImage(0, 0) = Vec3f::Zero();
+      Image3f const * albedoImage3 = &constantImage;
       if (material.emission == Vec3f::Zero()) {
         if (principledBRDF != nullptr) {
           ITextureMap3f& albedoMap = principledBRDF->getAlbedo();
           ConstantTexture3f* albedoConstant = dynamic_cast<ConstantTexture3f*>(&albedoMap);
+          Texture3f* albedoTexture = dynamic_cast<Texture3f*>(&albedoMap);
+
           if (albedoConstant != nullptr) {
-            material.albedo = albedoConstant->getValue();
+            constantImage(0, 0) = albedoConstant->getValue();
+            albedoImage3 = &constantImage;
+          }
+          else if (albedoTexture != nullptr) {
+            albedoImage3 = &albedoTexture->getImage();
+          }
+          else {
+            throw std::runtime_error("unsupported/not implemented input texture");
           }
         }
       }
 
       materials.push_back(material);
+
+      Image4f albedoImage4 = addAlphaChannel(*albedoImage3);
+
+      std::size_t albedoImageByteCount = sizeof(float) * 4 * albedoImage4.getWidth() * albedoImage4.getHeight();
+      albedoImageBuffers.emplace_back(std::make_unique<VulkanBuffer>(deviceAndQueue, albedoImageByteCount, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT));
+      VulkanBuffer& albedoImageBuffer = *albedoImageBuffers.back();
+      
+      albedoImageBuffer.write(albedoImage4.data(), albedoImageByteCount);
+
+      albedoImages.emplace_back(std::make_unique<VulkanImage>(
+        deviceAndQueue,
+        albedoImage4.getWidth(),
+        albedoImage4.getHeight(),
+        VK_FORMAT_R32G32B32A32_SFLOAT,
+        VK_IMAGE_TILING_OPTIMAL,
+        VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT));
+
+      VulkanImage& albedoImageGPU = *albedoImages.back();
+
+      deviceAndQueue->transitionImageLayout(albedoImageGPU, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+      deviceAndQueue->copyBufferToImage(albedoImageBuffer, albedoImageGPU);
+
+      deviceAndQueue->transitionImageLayout(albedoImageGPU, VK_IMAGE_LAYOUT_GENERAL);
     }
 
     std::size_t faceOffset = 0;
@@ -122,6 +159,14 @@ public:
         indices.push_back(tri[2]);
 
         materialIndices.push_back(scene.getMaterialIndex(geometryID, primIndex));
+
+        std::array<Vec2f, 3> uv = { Vec2f::Zero(), Vec2f::Zero(), Vec2f::Zero() };
+        std::optional< std::array<Vec2f, 3> > uvOptional = scene.getTriangleUV(geometryID, primIndex);
+        if (uvOptional.has_value()) uv = uvOptional.value();
+
+        textureCoordinates.push_back(uv[0]);
+        textureCoordinates.push_back(uv[1]);
+        textureCoordinates.push_back(uv[2]);
       }
       faceOffset += geometryFaceCount;
     }
@@ -141,6 +186,7 @@ public:
     }
 
     std::size_t verticesByteCount = sizeof(decltype(vertices)::value_type) * vertices.size();
+    std::size_t textureCoordinatesByteCount = sizeof(decltype(textureCoordinates)::value_type) * textureCoordinates.size();
     std::size_t indicesByteCount = sizeof(decltype(indices)::value_type) * indices.size();
     std::size_t materialIndicesByteCount = sizeof(decltype(materialIndices)::value_type) * materialIndices.size();
     std::size_t materialsByteCount = sizeof(decltype(materials)::value_type) * materials.size();
@@ -148,12 +194,19 @@ public:
 
     const VkBufferUsageFlags bufferUsageFlags =
       VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
+      | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    const VkBufferUsageFlags accelerationStructureBufferUsageFlags =
+      VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT
       | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT
       | VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
-    vertexBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, verticesByteCount, bufferUsageFlags, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+
+    vertexBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, verticesByteCount, accelerationStructureBufferUsageFlags, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
     vertexBuffer->write((void*)vertices.data(), verticesByteCount);
 
-    indexBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, indicesByteCount, bufferUsageFlags, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+    textureCoordinatesBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, textureCoordinatesByteCount, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+    textureCoordinatesBuffer->write((void*)textureCoordinates.data(), textureCoordinatesByteCount);
+
+    indexBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, indicesByteCount, accelerationStructureBufferUsageFlags, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
     indexBuffer->write((void*)indices.data(), indicesByteCount);
 
     materialIndicesBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, materialIndicesByteCount, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
@@ -356,9 +409,11 @@ public:
     std::vector<VkDescriptorPoolSize> poolSizes = {
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1),  // tlas
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1), // Vertices
+      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1), // TextureCoordinates
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1), // Indices
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1), // MaterialIndices
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1), // Materials
+      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, albedoImages.size()), // AlbedoImages
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1), // RandomInputState
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1), // Camera Input
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1), // outputImage
@@ -368,19 +423,19 @@ public:
     VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = vks::initializers::descriptorPoolCreateInfo(poolSizes, 1);
     VK_CHECK_RESULT(vkCreateDescriptorPool(logicalDevice, &descriptorPoolCreateInfo, nullptr, &descriptorPool));
 
-    int bindingCounter = 0;
-
     std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
       vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, VK_SHADER_STAGE_COMPUTE_BIT, 0), // tlas
       vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 1),  // Vertices
-      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 2), // Indices
-      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 3), // MaterialIndices
-      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 4), // Materials
-      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 5), // RandomInputState
-      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 6), // Camera Input
-      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 7), // outputImage
-      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 8), // outputNormal
-      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 9), // outputAlbedo
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 2),  // TextureCoordinates
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 3), // Indices
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 4), // MaterialIndices
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 5), // Materials
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_COMPUTE_BIT, 6, albedoImages.size()), // AlbedoImages
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 7), // RandomInputState
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 8), // Camera Input
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 9), // outputImage
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 10), // outputNormal
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 11), // outputAlbedo
     };
 
     VkDescriptorSetLayoutCreateInfo descriptorLayout = vks::initializers::descriptorSetLayoutCreateInfo(setLayoutBindings);
@@ -395,25 +450,34 @@ public:
     writeDescriptorSetAccelerationStructureKHR.pAccelerationStructures = &accelerationStructureTopLevel;
 
     VkDescriptorBufferInfo vertexDescriptorBufferInfo = vertexBuffer->descriptorBufferInfo();
+    VkDescriptorBufferInfo textureCoordinatesDescriptorBufferInfo = textureCoordinatesBuffer->descriptorBufferInfo();
     VkDescriptorBufferInfo indexDescriptorBufferInfo = indexBuffer->descriptorBufferInfo();
     VkDescriptorBufferInfo materialIndicesDescriptorBufferInfo = materialIndicesBuffer->descriptorBufferInfo();
     VkDescriptorBufferInfo materialDescriptorBufferInfo = materialBuffer->descriptorBufferInfo();
+
+    std::vector<VkDescriptorImageInfo> albedoImagesDescriptorBufferInfos(albedoImages.size());
+    for (size_t i = 0; i < albedoImages.size(); i++) {
+      albedoImagesDescriptorBufferInfos[i] = albedoImages[i]->getDescriptor();
+    }
+
     VkDescriptorBufferInfo randomInputStateDescriptorBufferInfo = randomInputStateBuffer->descriptorBufferInfo();
     VkDescriptorBufferInfo cameraDescriptorBufferInfo = cameraUniformBuffer->descriptorBufferInfo();
 
     std::vector<VkWriteDescriptorSet> computeWriteDescriptorSets = {
       writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 0, &writeDescriptorSetAccelerationStructureKHR), // tlas
       vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, &vertexDescriptorBufferInfo),  // Vertices
-      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2, &indexDescriptorBufferInfo),  // Indices
-      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3, &materialIndicesDescriptorBufferInfo), // MaterialIndices
-      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4, &materialDescriptorBufferInfo), // Materials
-      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 5, &randomInputStateDescriptorBufferInfo), // RandomInputState
-      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 6, &cameraDescriptorBufferInfo), // Camera Input
-      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 7, &resultImage.getDescriptor()), // outputImage
-      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 8, &normalImage.getDescriptor()), // outputNormal
-      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 9, &albedoImage.getDescriptor()), // outputAlbedo
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2, &textureCoordinatesDescriptorBufferInfo),  // TextureCoordinates
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3, &indexDescriptorBufferInfo),  // Indices
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4, &materialIndicesDescriptorBufferInfo), // MaterialIndices
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 5, &materialDescriptorBufferInfo), // Materials
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 6, albedoImagesDescriptorBufferInfos.data(), albedoImagesDescriptorBufferInfos.size()), // AlbedoImages
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 7, &randomInputStateDescriptorBufferInfo), // RandomInputState
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 8, &cameraDescriptorBufferInfo), // Camera Input
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 9, &resultImage.getDescriptor()), // outputImage
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 10, &normalImage.getDescriptor()), // outputNormal
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 11, &albedoImage.getDescriptor()), // outputAlbedo
     };
-    vkUpdateDescriptorSets(logicalDevice, computeWriteDescriptorSets.size(), computeWriteDescriptorSets.data(), 0, NULL);
+    vkUpdateDescriptorSets(logicalDevice, computeWriteDescriptorSets.size(), computeWriteDescriptorSets.data(), 0, nullptr);
 
     VkPipelineLayoutCreateInfo pPipelineLayoutCreateInfo = vks::initializers::pipelineLayoutCreateInfo(&descriptorSetLayout, 1);
 
@@ -532,10 +596,13 @@ private:
   std::unique_ptr<VulkanBuffer> vertexBuffer;
   std::size_t vertexCount;
   std::size_t faceCount;
+  std::unique_ptr<VulkanBuffer> textureCoordinatesBuffer;
   std::unique_ptr<VulkanBuffer> indexBuffer;
   std::unique_ptr<VulkanBuffer> materialIndicesBuffer;
   std::unique_ptr<VulkanBuffer> materialBuffer;
   std::unique_ptr<VulkanBuffer> randomInputStateBuffer;
+  std::vector<std::unique_ptr<VulkanBuffer> > albedoImageBuffers;
+  std::vector<std::unique_ptr<VulkanImage> > albedoImages;
 
   std::unique_ptr<VulkanBuffer> cameraUniformBuffer;
 

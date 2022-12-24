@@ -1,13 +1,13 @@
 #version 460
 #extension GL_EXT_ray_query : require
 #extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_nonuniform_qualifier : require
 
 const float Pi = 3.14159265358979323846;
 const float InvPi = 0.318309886183790671;
 
 struct Material {
 	vec3 emission;
-	vec3 albedo;
 };
 
 layout(local_size_x = 4, local_size_y = 4, local_size_z = 1) in;
@@ -18,27 +18,36 @@ layout(binding = 1, set = 0, scalar) buffer Vertices
 {
 	vec3 vertices[];
 };
-layout(binding = 2, set = 0, scalar) buffer Indices
+layout(binding = 2, set = 0, scalar) buffer TextureCoordinates
+{
+	vec2 textureCoordinates[];
+};
+layout(binding = 3, set = 0, scalar) buffer Indices
 {
 	uint indices[];
 };
 
-layout(binding = 3, set = 0, scalar) buffer MaterialIndices
+layout(binding = 4, set = 0, scalar) buffer MaterialIndices
 {
 	uint materialIndices[];
 };
 
-layout(binding = 4, set = 0, scalar) buffer Materials
+layout(binding = 5, set = 0, scalar) buffer Materials
 {
 	Material materials[];
 };
 
-layout(binding = 5, set = 0, scalar) buffer RandomInputState
+// https://github.com/SaschaWillems/Vulkan/blob/master/examples/descriptorindexing/descriptorindexing.cpp
+// https://github.com/SaschaWillems/Vulkan/tree/master/data/shaders/glsl/descriptorindexing
+
+layout(binding = 6, set = 0) uniform sampler2D albedoTextures[];
+
+layout(binding = 7, set = 0, scalar) buffer RandomInputState
 {
 	uint randomInputState[];
 };
 
-layout(binding = 6, scalar) uniform Camera {
+layout(binding = 8, scalar) uniform Camera {
 	vec3 position;
 	float fovSlope;
     vec3 forward;
@@ -46,9 +55,9 @@ layout(binding = 6, scalar) uniform Camera {
     vec3 up;
 } camera;
 
-layout(binding = 7, set = 0, rgba32f) uniform image2D outputImage;
-layout(binding = 8, set = 0, rgba32f) uniform image2D outputNormal;
-layout(binding = 9, set = 0, rgba32f) uniform image2D outputAlbedo;
+layout(binding = 9, set = 0, rgba32f) uniform image2D outputImage;
+layout(binding = 10, set = 0, rgba32f) uniform image2D outputNormal;
+layout(binding = 11, set = 0, rgba32f) uniform image2D outputAlbedo;
 
 
 vec3 cameraRay(vec2 pixelPosition, vec2 frameSize){
@@ -209,12 +218,14 @@ struct SurfaceInteraction {
 	int primitiveID;
 	vec3 x;
 	vec3 normal;
+	vec2 uv;
 };
 SurfaceInteraction getSurfaceInteraction(rayQueryEXT rayQuery){
 	SurfaceInteraction result;
 	
 	result.primitiveID = rayQueryGetIntersectionPrimitiveIndexEXT(rayQuery, true);
 	vec2 barycentrics = rayQueryGetIntersectionBarycentricsEXT(rayQuery, true);
+	float b0 = 1.0 - barycentrics[0] - barycentrics[1];
 	
 	uint vtxIdx0 = indices[3 * result.primitiveID];
 	uint vtxIdx1 = indices[3 * result.primitiveID + 1];
@@ -224,7 +235,12 @@ SurfaceInteraction getSurfaceInteraction(rayQueryEXT rayQuery){
 	vec3 v1 = vertices[vtxIdx1];
 	vec3 v2 = vertices[vtxIdx2];
 	
-	result.x = (1.0 - barycentrics[0] - barycentrics[1]) * v0 + barycentrics[0] * v1 + barycentrics[1] * v2;
+	vec2 uv0 = textureCoordinates[3 * result.primitiveID];
+	vec2 uv1 = textureCoordinates[3 * result.primitiveID + 1];
+	vec2 uv2 = textureCoordinates[3 * result.primitiveID + 2];
+	
+	result.x = b0 * v0 + barycentrics[0] * v1 + barycentrics[1] * v2;
+	result.uv = b0 * uv0 + barycentrics[0] * uv1 + barycentrics[1] * uv2;
 	
 	vec3 m = cross(v1 - v0, v2 - v0);
 	result.normal = normalize(m);
@@ -291,16 +307,18 @@ void main()
 					uint materialIdx = materialIndices[surfaceInteraction.primitiveID];
 					Material material = materials[materialIdx];
 					
+					vec3 albedo = texture(albedoTextures[materialIdx], surfaceInteraction.uv).xyz;
+					
 					if(depth == 0){
 						sumNormalSamples += surfaceInteraction.normal;
-						sumAlbedoSamples += material.albedo;
+						sumAlbedoSamples += albedo;
 					}
 					
 					float probabilityDensity;
 					vec3 rayDirectionNew = sampleHemisphereCosImportance(rngState, surfaceInteraction.normal, probabilityDensity);
 					
 					result += throughput * getEmissionRadiance(wo, surfaceInteraction.normal, material);
-					throughput *= (material.albedo * InvPi) * abs(dot(rayDirectionNew, surfaceInteraction.normal)) / probabilityDensity;
+					throughput *= (albedo * InvPi) * abs(dot(rayDirectionNew, surfaceInteraction.normal)) / probabilityDensity;
 					
 					rayOrigin = surfaceInteraction.x + 1e-4 * surfaceInteraction.normal;
 					rayDirection = rayDirectionNew;

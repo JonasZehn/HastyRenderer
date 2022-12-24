@@ -254,11 +254,13 @@ public:
     VkPhysicalDeviceRayQueryFeaturesKHR rayQueryFeatures{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR };
     VkPhysicalDeviceAccelerationStructureFeaturesKHR accelerationStructureFeaturesKHR{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR };
     VkPhysicalDeviceScalarBlockLayoutFeatures scalarBlockLayoutFeatures{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES };
+    VkPhysicalDeviceDescriptorIndexingFeatures descriptorIndexingFeatures{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES };
 
     features2.pNext = &bufferDeviceAddressFeature;
     bufferDeviceAddressFeature.pNext = &rayQueryFeatures;
     rayQueryFeatures.pNext = &accelerationStructureFeaturesKHR;
     accelerationStructureFeaturesKHR.pNext = &scalarBlockLayoutFeatures;
+    scalarBlockLayoutFeatures.pNext = &descriptorIndexingFeatures;
     vkGetPhysicalDeviceFeatures2(physicalDevice, &features2);
 
     if (bufferDeviceAddressFeature.bufferDeviceAddress == VK_FALSE) {
@@ -272,6 +274,9 @@ public:
     }
     if (scalarBlockLayoutFeatures.scalarBlockLayout == VK_FALSE) {
       throw std::runtime_error("gpu does not support required feature: scalarBlockLayout");
+    }
+    if (descriptorIndexingFeatures.runtimeDescriptorArray == VK_FALSE) {
+      throw std::runtime_error("gpu does not support required feature: runtimeDescriptorArray");
     }
 
     std::vector<const char*> enabledExtensions = { {
