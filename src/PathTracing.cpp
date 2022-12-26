@@ -49,7 +49,7 @@ Vec3f estimateRadiance(RenderContext context, LightRayInfo& lightRay, const Ray&
     float rouletteQ = 0.0f;
     if (depth >= context.renderSettings.roulleteStartDepth) rouletteQ = context.renderSettings.rouletteQ;
 
-    if (context.rng.uniform01f() < rouletteQ)
+    if (uniform01f(context.rng) < rouletteQ)
     {
       return Vec3f::Zero();
     }

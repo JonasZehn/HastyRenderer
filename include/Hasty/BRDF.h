@@ -129,7 +129,6 @@ public:
   float getIndexOfRefraction(int wavelength) const { return 1.0f; }
   const ITextureMap3f& getAlbedo() const { return *albedo; }
   Vec3f getAlbedo(const SurfaceInteraction& interaction) const { return albedo->evaluate(interaction); }
-  float cosTerm(const Vec3f& wo, const Vec3f& wi, const Vec3f& normalGeom, const Vec3f& normalShading, bool adjoint);
 
   const ITextureMap1f& getRoughness() const { return *roughness; }
   const ITextureMap1f& getMetallic() const { return *metallic; }
@@ -138,7 +137,7 @@ public:
 
   Vec3f getShadingNormal(const SurfaceInteraction& interaction, const Vec3f& wo);
   float computeAlpha(float roughness);
-  void computeProbability(float metallicHit, float* diffSpecMix, float* pProbablitySpec);
+  void computeProbability(float metallicHit, float specularHit, float* diffSpecMix, float* pProbablitySpec);
   void computeAnisotropyParameters(const SurfaceInteraction& interaction, const Vec3f& normalShading, float alpha, float &alpha_t, float &alpha_b, Vec3f& tangent, Vec3f& bitangent);
   MaterialEvalResult evaluate(const SurfaceInteraction& interaction, const Vec3f& wo, const Vec3f& wi, float indexOfRefractionOutside, bool adjoint, ShaderEvalFlag evalFlag);
   SampleResult sample(RNG& rng, const SurfaceInteraction& interaction, const LightRayInfo& lightRay, const Vec3f& wOut, OutsideIORFunctor getOutsideIOR, bool adjoint, ShaderEvalFlag evalFlag);

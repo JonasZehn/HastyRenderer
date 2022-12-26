@@ -4,8 +4,8 @@ namespace Hasty
 {
 Vec2f sampleDiskUniformly(RNG& rng, float* pDensity)
 {
-  float alpha = rng.uniform01f() * float(2.0 * Hasty::Pi);
-  float r = std::sqrt(rng.uniform01f());
+  float alpha = uniform01f(rng) * float(2.0 * Hasty::Pi);
+  float r = std::sqrt(uniform01f(rng));
   (*pDensity) = float(Hasty::InvPi);
   return Vec2f(r * std::cos(alpha), r * std::sin(alpha));
 }
@@ -87,8 +87,8 @@ Vec3f sampleHemisphereCosImportance(RNG& rng, const Vec3f& normal, float* pDensi
   do
   {
     std::uniform_real_distribution<float> uniform(0.0f, 1.0f);
-    float xi1 = rng.uniform01f();
-    float xi2 = rng.uniform01f();
+    float xi1 = uniform01f(rng);
+    float xi2 = uniform01f(rng);
 
     float phi = 2.0f * float(Pi) * xi2;
     costheta = std::sqrt(xi1);
@@ -127,8 +127,8 @@ Vec3f sampleCosineLobe(RNG& rng, const Vec3f& lobeDirection, float exponent, flo
   float costheta;
   do
   {
-    float xi1 = rng.uniform01f();
-    float xi2 = rng.uniform01f();
+    float xi1 = uniform01f(rng);
+    float xi2 = uniform01f(rng);
 
     float phi = 2.0f * float(Pi) * xi2;
     costheta = std::pow(xi1, 1.0f / (exponent + 1.0f));
@@ -167,8 +167,8 @@ Vec3f sampleTriangleUniformly(RNG& rng)
   // d xy / ds = sqrt(q) P_3
   // d xy / dq = 1/(2 sqrt(q) ) ( s P_3 - P_1)
   // => detjac = p3x / 2 ( s p3y - p1y) - p3y / 2 ( s p3x - p1x) = - p1y p3x / 2   + p1x p3y / 2 
-  float s = rng.uniform01f();
-  float t = std::sqrt(rng.uniform01f());
+  float s = uniform01f(rng);
+  float t = std::sqrt(uniform01f(rng));
   float beta1 = 1.0f - t;
   float beta3 = t * s;
   float beta2 = std::max(0.0f, 1.0f - beta1 - beta3);

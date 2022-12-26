@@ -81,7 +81,7 @@ TEST(brdf, sampleCosineLobe)
   {
     float pDensity;
     Vec3f lobeDirection = sampleSphereSurfaceUniformly(rng, &pDensity);
-    float exponent = 1.0f + rng.uniform01f() * 10.0f;
+    float exponent = 1.0f + uniform01f(rng) * 10.0f;
     Vec3f wi = sampleCosineLobe(rng, lobeDirection, exponent, &pDensity);
     EXPECT_NEARREL(wi.norm(), 1.0f, 1e-5f);
     float pDensity2 = evaluateCosineLobePDF(lobeDirection, exponent, wi);
@@ -135,7 +135,7 @@ TEST(brdf, sampleDGGX)
 
   for (int i = 0; i < 50; i++)
   {
-    float alpha = std::max(1e-2f, rng.uniform01f());
+    float alpha = std::max(1e-2f, uniform01f(rng));
     float pDensity;
     Vec3f normal = sampleSphereSurfaceUniformly(rng, &pDensity);
     Vec3f wo = sampleHemisphereSurfaceUniformly(rng, normal, &pDensity);
@@ -172,7 +172,7 @@ TEST(brdf, sampleGGXVNDFGlobal)
 
   for (int i = 0; i < 50; i++)
   {
-    float alpha = std::max(1e-2f, rng.uniform01f());
+    float alpha = std::max(1e-2f, uniform01f(rng));
     float pDensity;
     Vec3f normal = sampleSphereSurfaceUniformly(rng, &pDensity);
     Vec3f wo = sampleHemisphereSurfaceUniformly(rng, normal, &pDensity);

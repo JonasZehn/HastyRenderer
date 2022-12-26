@@ -6,6 +6,7 @@
 #include <Hasty/Scene.h>
 
 #include "VulkanInitializers.hpp"
+#include <ViewerUtils.h>
 
 #include <tiny_obj_loader.h>
 
@@ -180,7 +181,7 @@ public:
 
       MaterialUniformBufferObject material;
       material.emission = scene.getMaterialEmission(materialIdx);
-      material.specular = 0.5f;
+      material.specular = 0.0f;
 
       Image1f constImage1f(1, 1);
       constImage1f(0, 0) = 0.0f;
@@ -602,7 +603,7 @@ public:
     // Build a single command buffer containing the compute dispatch commands
     buildComputeCommandBuffer(resultImage.getWidth(), resultImage.getHeight());
   }
-  void run(RenderJob &job) {
+  void run(RenderJob &job, Image3f &image, Image3f & normalImage, Image3f &albedoImage) {
     VkDeviceSize renderWidth = job.renderSettings.width;
     VkDeviceSize renderHeight = job.renderSettings.height;
 
@@ -612,7 +613,7 @@ public:
 
     loadFunctions(deviceAndQueue->getLogicalDevice());
 
-    Image4f image(renderWidth, renderHeight);
+    Image4f imageTemp(renderWidth, renderHeight);
     VkDeviceSize bufferSizeBytes = renderWidth * renderHeight * 4 * sizeof(float);
 
     VulkanBuffer imageBuffer(deviceAndQueue, bufferSizeBytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
@@ -620,13 +621,13 @@ public:
     transferDataToGPU(*job.scene, renderWidth, renderHeight);
     buildAccelerationStructure();
 
-    VulkanImage gpuResultImage = allocateDeviceImage(deviceAndQueue, VK_FORMAT_R32G32B32A32_SFLOAT, image.getWidth(), image.getHeight(), VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
+    VulkanImage gpuResultImage = allocateDeviceImage(deviceAndQueue, VK_FORMAT_R32G32B32A32_SFLOAT, imageTemp.getWidth(), imageTemp.getHeight(), VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
     deviceAndQueue->transitionImageLayout(gpuResultImage, VK_IMAGE_LAYOUT_GENERAL);
 
-    VulkanImage gpuNormalImage = allocateDeviceImage(deviceAndQueue, VK_FORMAT_R32G32B32A32_SFLOAT, image.getWidth(), image.getHeight(), VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
+    VulkanImage gpuNormalImage = allocateDeviceImage(deviceAndQueue, VK_FORMAT_R32G32B32A32_SFLOAT, imageTemp.getWidth(), imageTemp.getHeight(), VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
     deviceAndQueue->transitionImageLayout(gpuNormalImage, VK_IMAGE_LAYOUT_GENERAL);
 
-    VulkanImage gpuAlbedoImage = allocateDeviceImage(deviceAndQueue, VK_FORMAT_R32G32B32A32_SFLOAT, image.getWidth(), image.getHeight(), VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
+    VulkanImage gpuAlbedoImage = allocateDeviceImage(deviceAndQueue, VK_FORMAT_R32G32B32A32_SFLOAT, imageTemp.getWidth(), imageTemp.getHeight(), VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
     deviceAndQueue->transitionImageLayout(gpuAlbedoImage, VK_IMAGE_LAYOUT_GENERAL);
 
     preprareCompute(deviceAndQueue, gpuResultImage, gpuNormalImage, gpuAlbedoImage);
@@ -655,22 +656,22 @@ public:
       VulkanFence fence(deviceAndQueue);
       deviceAndQueue->copyImageToBuffer(gpuResultImage, imageBuffer, fence);
       deviceAndQueue->waitForFence(fence);
-      imageBuffer.read(image.data(), bufferSizeBytes);
-      Hasty::writeEXR(image, "output.exr");
+      imageBuffer.read(imageTemp.data(), bufferSizeBytes);
+      image = removeAlphaChannel(imageTemp);
     }
     {
       VulkanFence fence(deviceAndQueue);
       deviceAndQueue->copyImageToBuffer(gpuNormalImage, imageBuffer, fence);
       deviceAndQueue->waitForFence(fence);
-      imageBuffer.read(image.data(), bufferSizeBytes);
-      Hasty::writeEXR(image, "outputNormal.exr");
+      imageBuffer.read(imageTemp.data(), bufferSizeBytes);
+      normalImage = removeAlphaChannel(imageTemp);
     }
     {
       VulkanFence fence(deviceAndQueue);
       deviceAndQueue->copyImageToBuffer(gpuAlbedoImage, imageBuffer, fence);
       deviceAndQueue->waitForFence(fence);
-      imageBuffer.read(image.data(), bufferSizeBytes);
-      Hasty::writeEXR(image, "outputAlbedo.exr");
+      imageBuffer.read(imageTemp.data(), bufferSizeBytes);
+      albedoImage = removeAlphaChannel(imageTemp);
     }
 
     destroy();
@@ -747,15 +748,26 @@ int main(int argc, char* argv[])
   }
 
   std::cout << "Setting up path tracer" << std::endl;
+  Image3f image, normalImage, albedoImage;
   try
   {
     RaytracerPrototype raytracer;
-    raytracer.run(job);
+    raytracer.run(job, image, normalImage, albedoImage);
   }
   catch (const std::exception& e)
   {
     std::cout << "exception: " << e.what() << std::endl;
     return 3;
+  }
+
+  try
+  {
+    postProcessAndSaveToDisk(outputFolder, image, normalImage, albedoImage);
+  }
+  catch (const std::exception& e)
+  {
+    std::cout << "exception: " << e.what() << std::endl;
+    return 5;
   }
 
   return 0;

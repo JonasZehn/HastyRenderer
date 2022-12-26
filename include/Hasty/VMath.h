@@ -290,6 +290,18 @@ private:
   std::array<float, 3> m_data;
 };
 
+inline float dot(const Vec3f& v1, const Vec3f& v2) {
+  return v1.dot(v2);
+}
+inline float normSq(const Vec3f& v1) {
+  return v1.normSq();
+}
+inline Vec3f cross(const Vec3f& v1, const Vec3f& v2) {
+  return v1.cross(v2);
+}
+inline Vec3f normalize(const Vec3f& v) {
+  return v.normalized();
+}
 inline float mix(float v1, float v2, float lambda)
 {
   return (1.0f - lambda) * v1 + lambda * v2;
@@ -594,30 +606,39 @@ private:
 
 
 /**
-* outg    N   return value
-*    |\` /|\ `/|
-*       \ | /
-* ------------------
-*          \
-*           _\|
-*             -outg
-*/
-inline Vec3f reflectAcross(const Vec3f& outgoing, const Vec3f& N)
-{
-  return  -outgoing + 2.0f * N.dot(outgoing) * N;
-}
-/**
-* outg    N   
+* incident N   
 *    |\` /|\
 *       \ |
 * ------------------
 *       /
 *     |/_
 *   return value
+* or 
+*         N    / return value
+*        /|\  /
+*         | / 
+* ------------------
+*          \
+*           \
+*            _| incident
+* 
 */
-inline Vec3f reflectAcrossNormalPlane(const Vec3f& outgoing, const Vec3f& N)
+inline Vec3f reflect(const Vec3f& incident, const Vec3f& N)
 {
-  return  outgoing - 2.0f * N.dot(outgoing) * N;
+  return incident - 2.0f * N.dot(incident) * N;
+}
+/**
+* outg    N   return value
+*    |\` /|\ `/|
+*       \ | /
+* ------------------
+*          \
+*           _\|
+*            - outg
+*/
+inline Vec3f reflectAcross(const Vec3f& outgoing, const Vec3f& N)
+{
+  return reflect(-outgoing, N); // -outgoing + 2.0f * N.dot(outgoing) * N;
 }
 
 

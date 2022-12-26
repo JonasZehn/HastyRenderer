@@ -238,7 +238,6 @@ typedef Image<float> Image1f;
 typedef Image<Vec3f> Image3f;
 typedef Image<Vec4f> Image4f;
 
-Image3f get3channelsFlipUpDown(const Image4f& image);
 Image3f flipUpDown(const Image3f& image);
 void writePFM(const Image1f& image, const std::filesystem::path& filename);
 void writePFM(const Image3f& image, const std::filesystem::path& filename);
@@ -248,6 +247,7 @@ void writeEXR(const Image<Vec3f>& image, const std::filesystem::path& filename);
 void writeEXR(const Image<Vec4f>& image, const std::filesystem::path& filename);
 
 Image4f addAlphaChannel(const Image3f& image);
+Image3f removeAlphaChannel(const Image4f& image);
 
 template<typename C>
 void swap(Image<C>& i1, Image<C>& i2)

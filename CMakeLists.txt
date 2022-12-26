@@ -82,7 +82,7 @@ target_link_libraries(
     VulkanPathTracePrototype
     PUBLIC
         tinyobjloader::tinyobjloader
-        libHastyRenderer
+        libHastyRendererViewer
     )
 target_include_directories(VulkanPathTracePrototype PRIVATE ${CMAKE_CURRENT_LIST_DIR}/apps)
 target_compile_definitions(VulkanPathTracePrototype PRIVATE "HASTY_SHADER_PATH=std::filesystem::path(\"${CMAKE_CURRENT_LIST_DIR}/shaders\")")

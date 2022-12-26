@@ -192,3 +192,12 @@ private:
 
 }
 #endif // #ifndef use_shishua
+
+namespace Hasty
+{
+
+inline float uniform01f(RNG& rng) {
+  return rng.uniform01f();
+}
+
+}

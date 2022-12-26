@@ -6,20 +6,6 @@ namespace Hasty
 {
 
 
-Image3f get3channelsFlipUpDown(const Image4f& image)
-{
-  Image3f subImage;
-  subImage.resize(image.getWidth(), image.getHeight());
-  for (int i = 0; i < image.getHeight(); i++)
-  {
-    for (int j = 0; j < image.getWidth(); j++)
-    {
-      subImage(j, image.getHeight() - i - 1) = Vec3f(image(j, i)[0], image(j, i)[1], image(j, i)[2]);
-    }
-  }
-  return subImage;
-}
-
 Image3f flipUpDown(const Image3f& image)
 {
   Image3f subImage;
@@ -195,6 +181,20 @@ Image4f addAlphaChannel(const Image3f& image) {
     }
   }
   return result;
+}
+
+Image3f removeAlphaChannel(const Image4f& image)
+{
+  Image3f subImage;
+  subImage.resize(image.getWidth(), image.getHeight());
+  for (uint32_t y = 0; y < image.getHeight(); y++)
+  {
+    for (uint32_t x = 0; x < image.getWidth(); x++)
+    {
+      subImage(x, y) = Vec3f(image(x, y)[0], image(x, y)[1], image(x, y)[2]);
+    }
+  }
+  return subImage;
 }
 
 }

@@ -62,8 +62,8 @@ public:
     uint32_t y = idx / notNormalizedPdf.getWidth();
     float heightF = float(notNormalizedPdf.getHeight());
     float widthF = float(notNormalizedPdf.getWidth());
-    float xi0 = rng.uniform01f();
-    float xi1 = rng.uniform01f();
+    float xi0 = uniform01f(rng);
+    float xi1 = uniform01f(rng);
     float left = x / widthF;
     float right = (x + 1.0f) / widthF;
     float lower = (notNormalizedPdf.getHeight() - (y + 1.0f)) / heightF;

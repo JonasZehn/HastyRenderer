@@ -508,7 +508,7 @@ Ray Scene::sampleLightRayFromStartPoint(RNG& rng, const SurfaceInteraction& poin
   EnvironmentTexture* envTexture = dynamic_cast<EnvironmentTexture*>(background.get());
   // we only use sampling of the background when it's a texture
   float pSurfaceSampling = envTexture == nullptr ? 1.0f : (hasSurfaceLight() ? 0.5f : 0.0f) ;
-  float xi = rng.uniform01f();
+  float xi = uniform01f(rng);
   bool useSurfaceSampling = xi < pSurfaceSampling;
   // p(omega) = p(omega | useSurfaceSampling) p(useSurfaceSampling) + p(omega | !useSurfaceSampling) p(!useSurfaceSampling)
 

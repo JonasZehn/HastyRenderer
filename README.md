@@ -126,7 +126,7 @@ RNG:
 | ![Output](images/not_denoised.jpg) | ![Output](images/denoised.jpg) | 
 
 ## CPU vs GPU - Visualizing Progress of GPU Implementation
-| CPU - 10 Samples | GPU - 500 Samples |
+| CPU - 10 Samples - MIS | GPU - 500 Samples - No MIS |
 | ----------- | ----------- |
 | ![Output](images/not_denoised.jpg) | ![Output](images/cornell_box_gpu_500_samples_gpu.jpg) |
 

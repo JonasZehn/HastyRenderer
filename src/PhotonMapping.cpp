@@ -253,7 +253,7 @@ void tracePhoton(RenderContext context, PhotonMap& photonMap, const Ray& a_ray, 
     // should we absorb photon:
     float minQ = 1.0f - std::pow(0.1f, 1.0f / context.renderSettings.maxDepth); // probability roulette after maxdepth, 1.0 - p(r0 | r1 | r2 ..) = 1.0 - p(r_i)^80 = 1.0 - pr^80 = 0.9 , pr^80 =  0.1
     float rouletteQ = std::max(minQ, 1.0f - throughputThis.norm()); // trying to keep the flux the same....  
-    if (context.rng.uniform01f() <= rouletteQ)
+    if (uniform01f(context.rng) <= rouletteQ)
     {
       break;
     }
@@ -337,7 +337,7 @@ GatherPhotonsResult gatherPhotons(RenderContext context, PhotonMap& photonMap, c
     if (depth >= context.renderSettings.roulleteStartDepth) rouletteQ = context.renderSettings.rouletteQ;
 
     // https://www.pbr-book.org/3ed-2018/Monte_Carlo_Integration/Russian_Roulette_and_Splitting#
-    if (context.rng.uniform01f() <= rouletteQ)
+    if (uniform01f(context.rng) <= rouletteQ)
     {
       break;
     }
@@ -448,7 +448,7 @@ PathTraceWithCausticsMapResult pathTraceWithCausticsMap(RenderContext context, P
     float rouletteQ = 0.0f;
     if (depth >= context.renderSettings.roulleteStartDepth) rouletteQ = context.renderSettings.rouletteQ;
 
-    if (context.rng.uniform01f() <= rouletteQ)
+    if (uniform01f(context.rng) <= rouletteQ)
     {
       return result;
     }
