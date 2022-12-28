@@ -513,6 +513,11 @@ inline T zero()
 }
 
 template <>
+inline int32_t zero()
+{
+  return static_cast<int32_t>(0);
+}
+template <>
 inline float zero()
 {
   return 0.0f;
@@ -531,6 +536,39 @@ template <>
 inline Vec4f zero()
 {
   return Vec4f::Zero();
+}
+
+
+template<typename T>
+inline T one()
+{
+  static_assert(!std::is_same<T, templateDummyType>::value, "this function is not supposed to work, see other specializations");
+}
+
+template <>
+inline int32_t one()
+{
+  return static_cast<int32_t>(1);
+}
+template <>
+inline float one()
+{
+  return 1.0f;
+}
+template <>
+inline Vec2f one()
+{
+  return Vec2f::Ones();
+}
+template <>
+inline Vec3f one()
+{
+  return Vec3f::Ones();
+}
+template <>
+inline Vec4f one()
+{
+  return Vec4f::Ones();
 }
 
 

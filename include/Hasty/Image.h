@@ -78,13 +78,13 @@ public:
   {
     m_width = width;
     m_height = height;
-    m_data.assign(m_width * m_height, PixelType::Zero());
+    m_data.assign(m_width * m_height, zero<PixelType>());
   }
   void setOnes(std::size_t width, std::size_t height)
   {
     m_width = width;
     m_height = height;
-    m_data.assign(m_width * m_height, PixelType::Ones());
+    m_data.assign(m_width * m_height, one<PixelType>());
   }
   void setConstant(std::size_t width, std::size_t height, const PixelType& v)
   {
@@ -95,6 +95,9 @@ public:
   std::size_t size() const
   {
     return m_data.size();
+  }
+  std::size_t byteCount() const {
+    return m_data.size() * sizeof(PixelType);
   }
 
   PixelType& operator()(std::size_t x, std::size_t y)
@@ -191,8 +194,21 @@ Image<_PixelType> runSmallFilter(const Image<_PixelType> &image, const std::arra
   return result;
 }
 
+template<typename _PixelType>
+struct PixelTypeTraits {
+
+};
+template<>
+struct PixelTypeTraits < float > {
+  using ScalarType = float;
+};
+template<>
+struct PixelTypeTraits<Vec3f> {
+  using ScalarType = float;
+};
+
 template<typename _PixelTypeOut, typename _PixelTypeIn, typename Functor>
-Image<_PixelTypeOut> transform(const Image<_PixelTypeIn> &image, Functor f)
+Image<_PixelTypeOut> transform(const Image<_PixelTypeIn>& image, Functor f)
 {
   std::size_t width = image.getWidth();
   std::size_t height = image.getHeight();
@@ -205,6 +221,25 @@ Image<_PixelTypeOut> transform(const Image<_PixelTypeIn> &image, Functor f)
     }
   }
   return result;
+}
+template<typename _PixelTypeIn, typename Functor>
+Image<_PixelTypeIn> transformInplace(Image<_PixelTypeIn>& image, Functor f)
+{
+  std::size_t width = image.getWidth();
+  std::size_t height = image.getHeight();
+  for (int y = 0; y < height; y++)
+  {
+    for (int x = 0; x < width; x++)
+    {
+      image(x, y) = f(x, y, image(x, y));
+    }
+  }
+  return image;
+}
+template<typename _PixelTypeIn>
+Image<_PixelTypeIn>& operator/=(Image<_PixelTypeIn>& image, typename PixelTypeTraits<_PixelTypeIn>::ScalarType v)
+{
+  return transformInplace(image, [v](int x, int y, const _PixelTypeIn& p) { return p / v; });
 }
 
 template<typename _PixelTypeIn>

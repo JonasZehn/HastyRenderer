@@ -27,6 +27,9 @@ struct MaterialUniformBufferObject {
   alignas(4) Vec3f emission;
   alignas(4) float specular;
 };
+struct PushConstantsSample {
+  int32_t nSamples;
+};
 
 
 template<typename _PixelType>
@@ -452,7 +455,7 @@ public:
     buildTopLevel();
   }
 
-  void buildComputeCommandBuffer(uint32_t width, uint32_t height)
+  void buildComputeCommandBuffer(int32_t nSamples, uint32_t width, uint32_t height)
   {
     VkQueue queue = deviceAndQueue->getQueue();
 
@@ -465,6 +468,9 @@ public:
 
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descriptorSet, 0, 0);
+    PushConstantsSample pushConstants;
+    pushConstants.nSamples = nSamples;
+    vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(PushConstantsSample), &pushConstants);
 
     uint32_t layoutSizeX = 4;
     uint32_t layoutSizeY = 4;
@@ -475,7 +481,7 @@ public:
     VK_CHECK_RESULT(vkEndCommandBuffer(commandBuffer));
   }
 
-  void preprareCompute(const std::shared_ptr<VulkanComputeDeviceAndQueue>& deviceAndQueue, VulkanImage& resultImage, VulkanImage& normalImage, VulkanImage& albedoImage) {
+  void preprareCompute(const std::shared_ptr<VulkanComputeDeviceAndQueue>& deviceAndQueue, int nSamples, VulkanImage& colorImage, VulkanImage& normalImage, VulkanImage& albedoImage) {
     VkDevice logicalDevice = deviceAndQueue->getLogicalDevice();
 
     std::vector<VkDescriptorPoolSize> poolSizes = {
@@ -490,9 +496,9 @@ public:
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, roughnessImages.size()), // roughnessTextures
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1), // RandomInputState
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1), // Camera Input
-      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1), // outputImage
-      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1), // outputNormal
-      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1), // outputAlbedo
+      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1), // colorImage
+      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1), // normalImage
+      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1), // albedoImage
     };
     VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = vks::initializers::descriptorPoolCreateInfo(poolSizes, 1);
     VK_CHECK_RESULT(vkCreateDescriptorPool(logicalDevice, &descriptorPoolCreateInfo, nullptr, &descriptorPool));
@@ -509,9 +515,9 @@ public:
       vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_COMPUTE_BIT, 8, roughnessImages.size()), // roughnessTextures
       vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 9), // RandomInputState
       vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 10), // Camera Input
-      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 11), // outputImage
-      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 12), // outputNormal
-      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 13), // outputAlbedo
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 11), // colorImage
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 12), // normalImage
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 13), // albedoImage
     };
 
     VkDescriptorSetLayoutCreateInfo descriptorLayout = vks::initializers::descriptorSetLayoutCreateInfo(setLayoutBindings);
@@ -561,13 +567,20 @@ public:
       vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 8, roughnessImagesDescriptorBufferInfos.data(), roughnessImages.size()), // roughnessTextures
       vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 9, &randomInputStateDescriptorBufferInfo), // RandomInputState
       vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10, &cameraDescriptorBufferInfo), // Camera Input
-      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 11, &resultImage.getDescriptor()), // outputImage
-      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 12, &normalImage.getDescriptor()), // outputNormal
-      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 13, &albedoImage.getDescriptor()), // outputAlbedo
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 11, &colorImage.getDescriptor()), // colorImage
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 12, &normalImage.getDescriptor()), // normalImage
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 13, &albedoImage.getDescriptor()), // albedoImage
     };
     vkUpdateDescriptorSets(logicalDevice, computeWriteDescriptorSets.size(), computeWriteDescriptorSets.data(), 0, nullptr);
 
     VkPipelineLayoutCreateInfo pPipelineLayoutCreateInfo = vks::initializers::pipelineLayoutCreateInfo(&descriptorSetLayout, 1);
+
+    std::vector<VkPushConstantRange> pushConstantRanges = {
+      vks::initializers::pushConstantRange(VK_SHADER_STAGE_COMPUTE_BIT, sizeof(PushConstantsSample), 0)
+    };
+
+    pPipelineLayoutCreateInfo.pushConstantRangeCount = pushConstantRanges.size();
+    pPipelineLayoutCreateInfo.pPushConstantRanges = pushConstantRanges.data();
 
     VK_CHECK_RESULT(vkCreatePipelineLayout(logicalDevice, &pPipelineLayoutCreateInfo, nullptr, &pipelineLayout));
 
@@ -596,14 +609,12 @@ public:
 
     VK_CHECK_RESULT(vkAllocateCommandBuffers(logicalDevice, &cmdBufAllocateInfo, &commandBuffer));
 
-    // Semaphore for compute & graphics sync
     VkSemaphoreCreateInfo semaphoreCreateInfo{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
     VK_CHECK_RESULT(vkCreateSemaphore(logicalDevice, &semaphoreCreateInfo, nullptr, &semaphore));
 
-    // Build a single command buffer containing the compute dispatch commands
-    buildComputeCommandBuffer(resultImage.getWidth(), resultImage.getHeight());
+    buildComputeCommandBuffer(nSamples, colorImage.getWidth(), colorImage.getHeight());
   }
-  void run(RenderJob &job, Image3f &image, Image3f & normalImage, Image3f &albedoImage) {
+  void run(RenderJob &job, Image3f &colorImage, Image3f & normalImage, Image3f &albedoImage) {
     VkDeviceSize renderWidth = job.renderSettings.width;
     VkDeviceSize renderHeight = job.renderSettings.height;
 
@@ -613,26 +624,29 @@ public:
 
     loadFunctions(deviceAndQueue->getLogicalDevice());
 
-    Image4f imageTemp(renderWidth, renderHeight);
-    VkDeviceSize bufferSizeBytes = renderWidth * renderHeight * 4 * sizeof(float);
+    Image4f outputImage;
+    outputImage.setZero(renderWidth, renderHeight);
+    
+    int nSamples = job.renderSettings.numSamples;
 
-    VulkanBuffer imageBuffer(deviceAndQueue, bufferSizeBytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    VkDeviceSize bufferSizeBytes = outputImage.byteCount();
+
+    VulkanBuffer outputImageBuffer(deviceAndQueue, bufferSizeBytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
     transferDataToGPU(*job.scene, renderWidth, renderHeight);
     buildAccelerationStructure();
 
-    VulkanImage gpuResultImage = allocateDeviceImage(deviceAndQueue, VK_FORMAT_R32G32B32A32_SFLOAT, imageTemp.getWidth(), imageTemp.getHeight(), VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
-    deviceAndQueue->transitionImageLayout(gpuResultImage, VK_IMAGE_LAYOUT_GENERAL);
+    VulkanImage colorImageGPU = allocateDeviceImage(deviceAndQueue, VK_FORMAT_R32G32B32A32_SFLOAT, renderWidth, renderHeight, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
+    deviceAndQueue->transitionImageLayout(colorImageGPU, VK_IMAGE_LAYOUT_GENERAL);
 
-    VulkanImage gpuNormalImage = allocateDeviceImage(deviceAndQueue, VK_FORMAT_R32G32B32A32_SFLOAT, imageTemp.getWidth(), imageTemp.getHeight(), VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
-    deviceAndQueue->transitionImageLayout(gpuNormalImage, VK_IMAGE_LAYOUT_GENERAL);
+    VulkanImage normalImageGPU = allocateDeviceImage(deviceAndQueue, VK_FORMAT_R32G32B32A32_SFLOAT, renderWidth, renderHeight, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
+    deviceAndQueue->transitionImageLayout(normalImageGPU, VK_IMAGE_LAYOUT_GENERAL);
 
-    VulkanImage gpuAlbedoImage = allocateDeviceImage(deviceAndQueue, VK_FORMAT_R32G32B32A32_SFLOAT, imageTemp.getWidth(), imageTemp.getHeight(), VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
-    deviceAndQueue->transitionImageLayout(gpuAlbedoImage, VK_IMAGE_LAYOUT_GENERAL);
+    VulkanImage albedoImageGPU = allocateDeviceImage(deviceAndQueue, VK_FORMAT_R32G32B32A32_SFLOAT, renderWidth, renderHeight, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
+    deviceAndQueue->transitionImageLayout(albedoImageGPU, VK_IMAGE_LAYOUT_GENERAL);
 
-    preprareCompute(deviceAndQueue, gpuResultImage, gpuNormalImage, gpuAlbedoImage);
+    preprareCompute(deviceAndQueue, nSamples, colorImageGPU, normalImageGPU, albedoImageGPU);
 
-    // Wait for rendering finished
     VkPipelineStageFlags waitStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 
     VkSubmitInfo computeSubmitInfo = vks::initializers::submitInfo();
@@ -648,30 +662,33 @@ public:
 
     deviceAndQueue->waitQueueIdle();
 
-    deviceAndQueue->transitionImageLayout(gpuResultImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-    deviceAndQueue->transitionImageLayout(gpuNormalImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-    deviceAndQueue->transitionImageLayout(gpuAlbedoImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    deviceAndQueue->transitionImageLayout(colorImageGPU, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    deviceAndQueue->transitionImageLayout(normalImageGPU, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    deviceAndQueue->transitionImageLayout(albedoImageGPU, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
 
     {
       VulkanFence fence(deviceAndQueue);
-      deviceAndQueue->copyImageToBuffer(gpuResultImage, imageBuffer, fence);
+      deviceAndQueue->copyImageToBuffer(colorImageGPU, outputImageBuffer, fence);
       deviceAndQueue->waitForFence(fence);
-      imageBuffer.read(imageTemp.data(), bufferSizeBytes);
-      image = removeAlphaChannel(imageTemp);
+      outputImageBuffer.read(outputImage.data(), outputImage.byteCount());
+      colorImage = removeAlphaChannel(outputImage);
+      colorImage /= static_cast<float>(nSamples);
     }
     {
       VulkanFence fence(deviceAndQueue);
-      deviceAndQueue->copyImageToBuffer(gpuNormalImage, imageBuffer, fence);
+      deviceAndQueue->copyImageToBuffer(normalImageGPU, outputImageBuffer, fence);
       deviceAndQueue->waitForFence(fence);
-      imageBuffer.read(imageTemp.data(), bufferSizeBytes);
-      normalImage = removeAlphaChannel(imageTemp);
+      outputImageBuffer.read(outputImage.data(), outputImage.byteCount());
+      normalImage = removeAlphaChannel(outputImage);
+      normalImage /= static_cast<float>(nSamples);
     }
     {
       VulkanFence fence(deviceAndQueue);
-      deviceAndQueue->copyImageToBuffer(gpuAlbedoImage, imageBuffer, fence);
+      deviceAndQueue->copyImageToBuffer(albedoImageGPU, outputImageBuffer, fence);
       deviceAndQueue->waitForFence(fence);
-      imageBuffer.read(imageTemp.data(), bufferSizeBytes);
-      albedoImage = removeAlphaChannel(imageTemp);
+      outputImageBuffer.read(outputImage.data(), outputImage.byteCount());
+      albedoImage = removeAlphaChannel(outputImage);
+      albedoImage /= static_cast<float>(nSamples);
     }
 
     destroy();
@@ -748,11 +765,11 @@ int main(int argc, char* argv[])
   }
 
   std::cout << "Setting up path tracer" << std::endl;
-  Image3f image, normalImage, albedoImage;
+  Image3f colorImage, normalImage, albedoImage;
   try
   {
     RaytracerPrototype raytracer;
-    raytracer.run(job, image, normalImage, albedoImage);
+    raytracer.run(job, colorImage, normalImage, albedoImage);
   }
   catch (const std::exception& e)
   {
@@ -762,7 +779,7 @@ int main(int argc, char* argv[])
 
   try
   {
-    postProcessAndSaveToDisk(outputFolder, image, normalImage, albedoImage);
+    postProcessAndSaveToDisk(outputFolder, colorImage, normalImage, albedoImage);
   }
   catch (const std::exception& e)
   {
