@@ -1,5 +1,7 @@
 #pragma once
 
+#include <Hasty/Core.h>
+
 #include <Hasty/Random.h>
 #include <Hasty/VMath.h>
 #include <Hasty/LightRayInfo.h>
@@ -17,15 +19,15 @@ class RenderContext;
 class RayHit;
 struct SurfaceInteraction;
 
-bool computeRefractionDirection(const Vec3f& wi, const Vec3f& normal, float indexOfRefraction_i, float indexOfRefraction_t, Vec3f* wt);
+bool computeRefractionDirection(const Vec3f& wi, const Vec3f& normal, float indexOfRefraction_i, float indexOfRefraction_t, HASTY_OUT(Vec3f) wt);
 float fresnelDielectric(float cos_i, float cos_t, float indexOfRefraction_i, float indexOfRefraction_t);
 
-Vec3f sampleDGGX(RNG& rng, const Vec3f& normal, float alpha, const Vec3f& dir1, float* pDensity);
+Vec3f sampleDGGX(HASTY_INOUT(RNG) rng, const Vec3f& normal, float alpha, const Vec3f& dir1, HASTY_OUT(float) pDensity);
 float sampleDGGXDensity(const Vec3f& normal, float alpha, const Vec3f& dir1, const Vec3f& dir2);
 
 float DGGX(float nh, float th, float bh, float alpha_t, float alpha_b);
 
-Vec3f sampleGGXVNDFGlobal(RNG& rng, const Vec3f& normal, float alpha_t, float alpha_b, const Vec3f& tangent, const Vec3f& bitangent, const Vec3f& dir1, float* pDensity);
+Vec3f sampleGGXVNDFGlobal(HASTY_INOUT(RNG) rng, const Vec3f& normal, float alpha_t, float alpha_b, const Vec3f& tangent, const Vec3f& bitangent, const Vec3f& dir1, HASTY_OUT(float) pDensity);
 float sampleGGXVNDFGlobalDensity(const Vec3f& normal, float alpha_t, float alpha_b, const Vec3f& tangent, const Vec3f& bitangent, const Vec3f& dir1, const Vec3f& dir2);
 
 enum class ShaderEvalFlag
@@ -123,9 +125,9 @@ public:
     float cosT;
   };
   ProbabilityResult computeProbability(float metallicHit, float specularHit, float transmissionHit, float cos_o, float indexOfRefraction_o, float indexOfRefraction_t, ShaderEvalFlag evalFlag);
-  void computeAnisotropyParameters(const SurfaceInteraction& interaction, const Vec3f& normalShading, float alpha, float& alpha_t, float& alpha_b, Vec3f& tangent, Vec3f& bitangent);
+  void computeAnisotropyParameters(const SurfaceInteraction& interaction, const Vec3f& normalShading, float alpha, HASTY_OUT(float) alpha_t, HASTY_OUT(float) alpha_b, HASTY_OUT(Vec3f) tangent, HASTY_OUT(Vec3f) bitangent);
   MaterialEvalResult evaluate(const SurfaceInteraction& interaction, const Vec3f& wo, const Vec3f& wi, float indexOfRefractionOutside, bool adjoint, ShaderEvalFlag evalFlag);
-  SampleResult sample(RNG& rng, const SurfaceInteraction& interaction, const LightRayInfo& lightRay, const Vec3f& wOut, OutsideIORFunctor getOutsideIOR, bool adjoint, ShaderEvalFlag evalFlag);
+  SampleResult sample(HASTY_INOUT(RNG) rng, const SurfaceInteraction& interaction, const LightRayInfo& lightRay, const Vec3f& wOut, OutsideIORFunctor getOutsideIOR, bool adjoint, ShaderEvalFlag evalFlag);
   float evaluateSamplePDF(const SurfaceInteraction& interaction, const Vec3f& wo, const Vec3f& wi, float outsideIOR);
   bool hasDiffuseLobe(const SurfaceInteraction& interaction);
 

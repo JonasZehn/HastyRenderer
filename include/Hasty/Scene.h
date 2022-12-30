@@ -66,7 +66,7 @@ public:
   Vec3f constructRayX(const SurfaceInteraction& interaction, bool outside);
   Ray constructRay(const SurfaceInteraction& interaction, const Vec3f& direction, bool outside);
   Ray constructRayEnd(const SurfaceInteraction& interaction, const Vec3f& end, bool outside);
-  void rayHit(const Ray& ray, RayHit* rayhit);
+  void rayHit(const Ray& ray, RayHit& rayhit);
   BXDF& getBXDFByIndex(uint32_t materialIndex);
   BXDF& getBXDF(std::size_t geomID, std::size_t primID);
 protected:
@@ -105,9 +105,9 @@ public:
   bool hasSurfaceLight() const;
   bool isSurfaceLight(const RayHit& hit) const;
   bool isInfiniteAreaLight(const RayHit& hit) const;
-  SurfaceInteraction sampleSurfaceLightPosition(RNG& rng, float* pDensity);
-  Ray sampleLightRay(RNG& rng, Vec3f* flux);
-  Ray sampleLightRayFromStartPoint(RNG& rng, const SurfaceInteraction& point, float* pDensity, RayHit *rayhit, bool *lightVisible);
+  SurfaceInteraction sampleSurfaceLightPosition(RNG& rng, float& pDensity);
+  Ray sampleLightRay(RNG& rng, Vec3f& flux);
+  Ray sampleLightRayFromStartPoint(RNG& rng, const SurfaceInteraction& point, float& pDensity, RayHit& rayhit, bool& lightVisible);
   float evalLightRayFromStartPointDensity(const SurfaceInteraction& point, const Ray& ray2, const RayHit& rayhit2);
   float computeSurfaceLightProbabilityDensity(const RayHit& hit) const;
   std::string getObjectName(const RayHit& hit);

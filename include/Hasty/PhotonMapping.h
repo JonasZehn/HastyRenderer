@@ -60,7 +60,7 @@ public:
     pixel.mutex.unlock();
     return result;
   }
-  Vec3f unlockAndUpdateStatistic(int i, int j, const Vec3f& flux, const Vec3f& L, int M, int NeInI, float* outRadius)
+  Vec3f unlockAndUpdateStatistic(int i, int j, const Vec3f& flux, const Vec3f& L, int M, int NeInI, float& outRadius)
   {
     float alpha = 0.4f;
 
@@ -70,13 +70,13 @@ public:
     Vec3f Lflux = Vec3f::Zero();
     if (pixel.radius < 0.0f)
     {
-      if (*outRadius < 0.0f)
+      if (outRadius < 0.0f)
       {
         assert(M == 0);
       }
       else
       {
-        pixel.radius = *outRadius;
+        pixel.radius = outRadius;
         pixel.N += alpha * M;
         pixel.Ne += NeInI;
         pixel.flux = flux;
@@ -96,7 +96,7 @@ public:
       pixel.Ne += NeInI;
       pixel.flux = (pixel.flux + flux) * (pixel.radius * pixel.radius) / (rold * rold);
       Lflux = pixel.Ne == 0 ? Vec3f::Zero() : pixel.flux / (pixel.radius * pixel.radius * float(Pi) * pixel.Ne);
-      (*outRadius) = pixel.radius;
+      outRadius = pixel.radius;
     }
     
     Vec3f result = Lflux + pixel.LSum / float(pixel.Nd);

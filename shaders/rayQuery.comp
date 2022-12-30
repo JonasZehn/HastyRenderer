@@ -242,6 +242,7 @@ struct SurfaceInteraction {
 	vec2 uvInverted;
 	vec3 tangent;
 	vec3 bitangent;
+	vec3 normalShadingDefault;
 };
 SurfaceInteraction getSurfaceInteraction(rayQueryEXT rayQuery){
 	SurfaceInteraction result;
@@ -272,6 +273,8 @@ SurfaceInteraction getSurfaceInteraction(rayQueryEXT rayQuery){
 	result.tangent = anyOrthonormal(result.normalGeometric);
 	result.bitangent = cross(result.normalGeometric, result.tangent);
 	
+	result.normalShadingDefault = ;
+	
 	return result;
 }
 
@@ -293,7 +296,6 @@ struct SampleResult
 	vec3 throughputDiffuse;
 	vec3 throughputSpecular;
 	float pdfOmega;
-	float diffuseSpecMix;
 };
 
 
@@ -317,9 +319,6 @@ float PrincipledBRDFcomputeAlpha(float roughness)
 }
 
 
-vec3 getShadingNormal(SurfaceInteraction interaction, vec3 wo){
-	return interaction.normalGeometric;
-}
 float square(float f){ return f*f; }
 
 
@@ -402,6 +401,33 @@ float sampleGGXVNDFGlobalDensity(vec3 normal, float alpha_t, float alpha_b, vec3
 	float pDensityH = G1 * max(0.0f, dot(dir1, NeGlobal)) * D_ggx / dot(dir1, normal);
 	return pDensityH / (1e-7f + 4.0f * abs(dot(dir1, NeGlobal)));
 }
+float signSide(float dotNW) {
+	return dotNW < 0.0f ? -1.0f : 1.0f;
+}
+
+bool sideOutside(float dotNW) {
+	return dotNW >= 0.0f;
+}
+
+float computeNormalScale(vec3 wi, vec3 normalShading, vec3 normalGeometric) {
+	return abs(dot(wi, normalShading)) / (1e-7f + abs(dot(wi, normalGeometric)));
+}
+
+vec3 PrincipledBRDFgetShadingNormal(SurfaceInteraction interaction, vec3 wo, float dotNgWo)
+{
+	float sideNgWo = signSide(dotNgWo);
+	vec3 normalShading;
+		normalShading = interaction.normalShadingDefault;
+	float sideNsWo = signSide(dot(normalShading, wo));
+	if (sideNgWo != sideNsWo)
+	{
+		normalShading = interaction.normalGeometric; // this is not consistent but good enough for the hack called normal map
+	}
+	// here we guarantuee signSide(normalShading, wo) == signSide(interaction.normalGeometric, wo)
+	// but now we flip it according to normalGeometric:
+	normalShading *= sideNgWo;
+	return normalShading;
+}
 
 void PrincipledBRDFcomputeProbability(float metallicHit, float specularHit, out float diffSpecMix, out float pProbablitySpec)
 {
@@ -464,111 +490,187 @@ vec3 PrincipledBRDFevaluateSpecular(
 	return result;
 }
 
-SampleResult PrincipledBRDFsample(
-	inout RNG rng, SurfaceInteraction interaction, vec3 albedoHit,
-	float metallicHit, float specularHit, float roughnessHit, float anisotropyHit,
-	vec3 wOut, float outsideIOR)
+SampleResult PrincipledBRDFsample(inout RNG rng, SurfaceInteraction interaction, vec3 wo)
 {
 	SampleResult result;
 
-	result.outside = dot(wOut, interaction.normalGeometric) > 0.0f;
-	if (!result.outside)
+	//assert(evalFlag != ShaderEvalFlagNONE); // no distribution to sample
+
+	float dotNgWo = dot(interaction.normalGeometric, wo);
+	vec3 normalShading = PrincipledBRDFgetShadingNormal(interaction, wo, dotNgWo);
+	float dotNsWo = dot(normalShading, wo);
+
+	vec3 albedoHit = albedo->evaluate(interaction);
+	float roughnessHit = roughness->evaluate(interaction);
+	float alpha = computeAlpha(roughnessHit);
+	float metallicHit = metallic->evaluate(interaction);
+	float specularHit = this->specular;
+	float anisotropyHit = this->anisotropy;
+	float transmissionHit = transmission;
+
+	float indexOfRefractionOutside = getOutsideIOR();
+	float indexOfRefractionMat;
+	int wavelength;
+	if (varyIOR)
 	{
-		result.pdfOmega = 1.0;
+		wavelength = result.lightRay.getWavelength(rng, abs(albedoHit));
+		indexOfRefractionMat = getIndexOfRefraction(wavelength);
+	}
+	else
+	{
+		wavelength = -1;
+		indexOfRefractionMat = getIndexOfRefraction(0);
+	}
+
+	result.outside = sideOutside(dotNgWo);
+	float indexOfRefraction_o = result.outside ? indexOfRefractionOutside : indexOfRefractionMat;
+	float indexOfRefraction_refr_o = result.outside ? indexOfRefractionMat : indexOfRefractionOutside;
+	
+	ProbabilityResult probabilityResult = computeProbability(metallicHit, specularHit, transmission, dotNsWo, indexOfRefraction_o, indexOfRefraction_refr_o, evalFlag);
+
+	if (probabilityResult.noStrategy) {
+		result.direction = vec3(1.0f, 0.0f, 0.0f);
 		result.throughputDiffuse = vec3(0.0);
-		result.throughputSpecular = vec3(0.0);
-		result.direction = -interaction.normalGeometric; // returning any direction, cause there should be no value that is nonzero
+		result.throughputConcentrated = vec3(0.0);
+		result.pdfOmega = 0.0f;
 		return result;
 	}
-	
-	vec3 normalShading = getShadingNormal(interaction, wOut);
-	if (dot(wOut, normalShading) <= 0.0f)
-	{
-		result.pdfOmega = 1.0;
-		result.throughputDiffuse = vec3(0.0);
-		result.throughputSpecular = vec3(0.0);
-		result.direction = -interaction.normalGeometric; // returning any direction, cause there should be no value that is nonzero
-		return result;
+
+	// we just put the same Fresnel term in for all wavelengths and then mask the output:
+	vec3 FDaccurateVector = vec3Fill(probabilityResult.FDaccurate);
+	vec3 wavelengthMask = vec3(1.0);
+	if (wavelength != -1) {
+		wavelengthMask = vec3(0.0);
+		wavelengthMask[wavelength] = 1.0f;
 	}
-	
-	float alpha = PrincipledBRDFcomputeAlpha(roughnessHit);
-	float diffuseSpecMix, pSpecularStrategy;
-	PrincipledBRDFcomputeProbability(metallicHit, specularHit, diffuseSpecMix, pSpecularStrategy);
-	
-	result.diffuseSpecMix = diffuseSpecMix;
-	
+
 	float alpha_t, alpha_b;
 	vec3 tangent, bitangent;
-	PrincipledBRDFcomputeAnisotropyParameters(interaction, normalShading, alpha, anisotropyHit, alpha_t, alpha_b, tangent, bitangent);
+	computeAnisotropyParameters(interaction, normalShading, alpha, alpha_t, alpha_b, tangent, bitangent);
+
+	// pSpecStr = proability to sample using Specular Strategy
+	// p_diff = probability density of diffuse sampling scheme
+	// p_spec = probability density of specular sampling scheme
+	//F = f L cos(omega) / p(omega)	, omega ~ uniform
+	//E[F] = \int f L cos(omega) / p(omega) * p(omega) domega = \int f L cos(omega) domega
+	//F' = {
+	//			f L cos(omega) / (pSpecStr p_spec(omega) + (1 - pSpecStr) p_diff(omega)) , omega ~ p(spec)		 xi < pSpecStr
+	//			f L cos(omega) / (pSpecStr p_spec(omega) + (1 - pSpecStr) p_diff(omega)), omega ~ p(diffuse) xi >= pSpecStr
+	//		 }
+	//E[F'] = pSpecStr \int f L cos(omega) / (pSpecStr p_spec(omega) + (1 - pSpecStr) p_diff(omega))	p_spec(omega) domega + (1 - pSpecStr) \int f L cos(omega) / (pSpecStr p_spec(omega) + (1 - pSpecStr) p_diff(omega)) p_diff(omega) domega
+	//			 = \int f L cos(omega)	(pSpecStr	p_spec(omega) + (1 - pSpecStr)p_diff(omega)) / (pSpecStr p_spec(omega) + (1 - pSpecStr) p_diff(omega))) domega
+	//			 = \int f L cos(omega) domega = E[F]
 	
-	MaterialEvalResult evalResult;
-	
-	bool useSpecularStrategy = uniform01f(rng) < pSpecularStrategy;
-	if (useSpecularStrategy)
+	MaterialEvalResult evalResult = MaterialEvalResult(vec3(0.0), vec3(0.0), normalShading);
+
+	// using defines here instead of enums to support glsl
+#define PBRDF_STRATEGY_DIFFUSE 1u
+#define PBRDF_STRATEGY_SPECULAR 2u
+#define PBRDF_STRATEGY_REFRACTIVE 3u
+
+	float xi = uniform01f(rng); // xi \in [0, 1)
+	uint32_t strategy = xi < probabilityResult.pRefractiveStrategy ? PBRDF_STRATEGY_REFRACTIVE : ( xi < (probabilityResult.pRefractiveStrategy + probabilityResult.pSpecularStrategy) ? PBRDF_STRATEGY_SPECULAR : PBRDF_STRATEGY_DIFFUSE);
+	if (strategy == PBRDF_STRATEGY_SPECULAR)
 	{
+
 		if (alpha == 0.0f) // delta distribution; need to keep wierd fake measure
 		{
-			result.direction = reflectAcross(wOut, normalShading);
-			result.pdfOmega = pSpecularStrategy;
+			//F' = {
+			//			(f_specular L cos(omegaSpec)) / pSpecStr, omega = omegaSpec		 xi < pSpecStr
+			//			f_diffuse L cos(omega) / ((1 - pSpecStr) p_diff), omega ~ p_diff xi >= pSpecStr
+			//		 }
+			//E[F'] = pSpecStr f_specular(omega) L(omega) cos(omegaSpec) / pSpecStr + (1 - pSpecStr) \int f_diffuse L cos(omega) / ((1 - pSpecStr) pDiffuse) pDiffuse(omega) domega
+			//			 = L f_specular(omega_specular) cos(omega_specular) + \int L cos(omega) f_diffuse(omega) domega
+			//			 = \int	L cos(omega) f_specular dirac_specular(omega) domega + \int L cos(omega) f_diffuse domega
+			//			 = \int	L cos(omega) (f_specular dirac_specular(omega)	+	f_diffuse) domega
+			result.direction = reflectAcross(wo, normalShading);
+			result.pdfOmega = 1e12f; // this is the probability for MIS , we could also tell it directly that it's a dirac delta but this should work to working precision
+			vec3 wi = result.direction;
+			float normalScale = computeNormalScale(wi, normalShading, interaction.normalGeometric);
 			evalResult.fDiffuse = vec3(0.0);
-			evalResult.fSpecular = PrincipledBRDFevaluateSpecular(
+			evalResult.fConcentrated = 1e12f / probabilityResult.pSpecularStrategy * PrincipledBRDFevaluateConcentrated(
 				albedoHit, metallicHit, specularHit,
-				roughnessHit, anisotropyHit,
-				wOut, result.direction,
+				roughnessHit, anisotropyHit, transmission,
+				wo, result.direction,
 				alpha,
 				alpha_t, alpha_b,
 				tangent, bitangent,
-				normalShading, diffuseSpecMix);
+				normalShading, normalScale, true, false, FDaccurateVector);
 		}
 		else
 		{
 			float pdfSpec;
-			result.direction = sampleGGXVNDFGlobal(rng, normalShading, alpha_t, alpha_b, tangent, bitangent, wOut, pdfSpec);
+			result.direction = sampleGGXVNDFGlobal(rng, normalShading, alpha_t, alpha_b, tangent, bitangent, wo, &pdfSpec);
 			float pdfDiffuse = evaluateHemisphereCosImportancePDF(normalShading, result.direction);
-			result.pdfOmega = pSpecularStrategy * pdfSpec + (1.0f - pSpecularStrategy) * pdfDiffuse;
-			evalResult.fDiffuse = PrincipledBRDFevaluateDiffuse(albedoHit, diffuseSpecMix);
-			evalResult.fSpecular = PrincipledBRDFevaluateSpecular(
+
+			result.pdfOmega = probabilityResult.pSpecularStrategy * pdfSpec + probabilityResult.pDiffuseStrategy * pdfDiffuse;
+			vec3 wi = result.direction;
+			float normalScale = computeNormalScale(wi, normalShading, interaction.normalGeometric);
+			evalResult.fDiffuse = PrincipledBRDFevaluateDiffuse(albedoHit, normalScale, metallicHit, specularHit, transmission);
+			evalResult.fConcentrated = PrincipledBRDFevaluateConcentrated(
 				albedoHit, metallicHit, specularHit,
-				roughnessHit, anisotropyHit,
-				wOut, result.direction,
+				roughnessHit, anisotropyHit, transmission,
+				wo, result.direction,
 				alpha,
 				alpha_t, alpha_b,
 				tangent, bitangent,
-				normalShading, diffuseSpecMix);
+				normalShading, normalScale, false, false, FDaccurateVector);
 		}
 	}
-	else
+	else if(strategy == PBRDF_STRATEGY_DIFFUSE)
 	{
 		float pdfDiffuse;
-		result.direction = sampleHemisphereCosImportance(rng, normalShading, pdfDiffuse);
-		
+		result.direction = sampleHemisphereCosImportance(rng, normalShading, &pdfDiffuse);
+		vec3 wi = result.direction;
+		float normalScale = computeNormalScale(wi, normalShading, interaction.normalGeometric);
+
 		if (alpha == 0.0f) // delta distribution; need to keep wierd fake measure
 		{
-			result.pdfOmega = (1.0f - pSpecularStrategy) * pdfDiffuse;
-			evalResult.fDiffuse = PrincipledBRDFevaluateDiffuse(albedoHit, diffuseSpecMix);
-			evalResult.fSpecular = vec3(0.0);
+			result.pdfOmega = probabilityResult.pDiffuseStrategy * pdfDiffuse;
+			evalResult.fDiffuse = PrincipledBRDFevaluateDiffuse(albedoHit, normalScale, metallicHit, specularHit, transmission);
+			evalResult.fConcentrated = vec3(0.0);
 		}
 		else
 		{
-			float pdfSpec = sampleGGXVNDFGlobalDensity(normalShading, alpha_t, alpha_b, tangent, bitangent, wOut, result.direction);
-			result.pdfOmega = pSpecularStrategy * pdfSpec + (1.0f - pSpecularStrategy) * pdfDiffuse;
-			evalResult.fDiffuse = PrincipledBRDFevaluateDiffuse(albedoHit, diffuseSpecMix);
-			evalResult.fSpecular = PrincipledBRDFevaluateSpecular(
+			float pdfSpec = sampleGGXVNDFGlobalDensity(normalShading, alpha_t, alpha_b, tangent, bitangent, wo, result.direction);
+			result.pdfOmega = probabilityResult.pSpecularStrategy * pdfSpec + (1.0f - probabilityResult.pSpecularStrategy) * pdfDiffuse;
+			evalResult.fDiffuse = PrincipledBRDFevaluateDiffuse(albedoHit, normalScale, metallicHit, specularHit, transmission);
+			evalResult.fConcentrated = PrincipledBRDFevaluateConcentrated(
 				albedoHit, metallicHit, specularHit,
-				roughnessHit, anisotropyHit,
-				wOut, result.direction,
+				roughnessHit, anisotropyHit, transmission,
+				wo, result.direction,
 				alpha,
 				alpha_t, alpha_b,
 				tangent, bitangent,
-				normalShading, diffuseSpecMix);
+				normalShading, normalScale, false, false, FDaccurateVector);
 		}
 	}
-	
-	float normalScale = max(0.0f, dot(result.direction, normalShading)) / (1e-7f + abs(dot(result.direction, interaction.normalGeometric)));
-	float m = normalScale * abs(dot(result.direction, interaction.normalGeometric)) / result.pdfOmega;
+	else {
+		// refraction: switch outside
+		result.outside = !result.outside;
+		result.pdfOmega = 1e12f;
+		evalResult.fDiffuse = vec3(0.0);
+		if (!probabilityResult.refractionPossible) {
+			evalResult.fConcentrated = vec3(0.0);
+			result.direction = vec3(1.0f, 0.0f, 0.0f);
+		}
+		else {
+			vec3 wi = computeRefractionDirectionFromAngles(wo, normalShading, indexOfRefraction_o / indexOfRefraction_refr_o, dotNsWo, probabilityResult.cosT);
+			result.direction = wi;
+			float scale = adjoint ? 1.0f : square(indexOfRefraction_o) / square(indexOfRefraction_refr_o); // See "Non-symmetric Scattering in Light Transport Algorithms" the eq. after eq. 10
+			float fc = 1e12f / probabilityResult.pRefractiveStrategy * scale * (1.0f - probabilityResult.FDaccurate) / abs(dot(result.direction, interaction.normalGeometric));
+			evalResult.fConcentrated = fc * wavelengthMask;
+		}
+	}
+
+	float m = abs(dot(result.direction, interaction.normalGeometric)) / result.pdfOmega;
 	result.throughputDiffuse = evalResult.fDiffuse * m;
-	result.throughputSpecular = evalResult.fSpecular * m;
-	
+	result.throughputConcentrated = evalResult.fConcentrated * m;
+
+	//assertUnitLength(result.direction);
+	//assertFinite(result.throughputDiffuse);
+	//assertFinite(result.throughputConcentrated);
+	//assertFinite(result.pdfOmega);
 	return result;
 }
 

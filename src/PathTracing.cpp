@@ -24,7 +24,7 @@ Vec3f estimateRadiance(RenderContext context, LightRayInfo& lightRay, const Ray&
 
   RayHit rayhitLocal;
   RayHit& rayhit = rayhitPtr == nullptr ? rayhitLocal : *rayhitPtr;
-  if (rayhitPtr == nullptr) context.scene.rayHit(ray, &rayhit);
+  if (rayhitPtr == nullptr) context.scene.rayHit(ray, rayhit);
 
   if (hasHitSurface(rayhit))
   {

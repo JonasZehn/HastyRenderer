@@ -278,9 +278,9 @@ Ray Scene::constructRayEnd(const SurfaceInteraction& interaction, const Vec3f& e
   Vec3f xOffset = constructRayX(interaction, outside);
   return Ray(xOffset, normalize(end - xOffset));
 }
-void Scene::rayHit(const Ray& ray, RayHit* rayhit)
+void Scene::rayHit(const Ray& ray, RayHit& rayhit)
 {
-  RTCRayHit& rtcrayhit = rayhit->rtc;
+  RTCRayHit& rtcrayhit = rayhit.rtc;
   auto& orig = ray.origin();
   auto& dir = ray.direction();
   rtcrayhit.ray.org_x = orig[0]; rtcrayhit.ray.org_y = orig[1]; rtcrayhit.ray.org_z = orig[2];
@@ -294,11 +294,11 @@ void Scene::rayHit(const Ray& ray, RayHit* rayhit)
 
   rtcIntersect1(m_embreeScene, &context, &rtcrayhit);
 
-  if (hasHitSurface(*rayhit))
+  if (hasHitSurface(rayhit))
   {
     Vec3f barycentricCoordinates(1.0f - rtcrayhit.hit.u - rtcrayhit.hit.v, rtcrayhit.hit.u, rtcrayhit.hit.v);
     Vec3f geomNormal = normalize(Vec3f(rtcrayhit.hit.Ng_x, rtcrayhit.hit.Ng_y, rtcrayhit.hit.Ng_z));
-    rayhit->interaction = getInteraction(rayhit->rtc.hit.geomID, rayhit->rtc.hit.primID, barycentricCoordinates, geomNormal);
+    rayhit.interaction = getInteraction(rayhit.rtc.hit.geomID, rayhit.rtc.hit.primID, barycentricCoordinates, geomNormal);
   }
 }
 
@@ -465,14 +465,14 @@ bool Scene::isInfiniteAreaLight(const RayHit& hit) const
   return !hasHitSurface(hit);
 }
 
-SurfaceInteraction Scene::sampleSurfaceLightPosition(RNG& rng, float* pDensity)
+SurfaceInteraction Scene::sampleSurfaceLightPosition(RNG& rng, float& pDensity)
 {
   if (lightTriangles.size() == 0)
   {
     std::cout << "error: no light triangle found " << std::endl;
     exit(1);
   }
-  (*pDensity) = 1.0f / totalLightArea;
+  pDensity = 1.0f / totalLightArea;
 
   unsigned int triangleIdx = (*lightDistribution)(rng);
   std::array<std::size_t, 2> ids = lightTriangles[triangleIdx];
@@ -486,18 +486,18 @@ SurfaceInteraction Scene::sampleSurfaceLightPosition(RNG& rng, float* pDensity)
   Vec3f barycentricCoordinates = sampleTriangleUniformly(rng);
   return getInteraction(geomID, primID, barycentricCoordinates, normal);
 }
-Ray Scene::sampleLightRay(RNG& rng, Vec3f* flux)
+Ray Scene::sampleLightRay(RNG& rng, Vec3f& flux)
 {
   // https://www.pbr-book.org/3ed-2018/Light_Transport_III_Bidirectional_Methods/Stochastic_Progressive_Photon_Mapping#eq:sppm-particle-weight
   float pPos, pDirection;
-  SurfaceInteraction interaction = sampleSurfaceLightPosition(rng, &pPos);
-  Vec3f direction = sampleHemisphereCosImportance(rng, interaction.normalGeometric, &pDirection);
+  SurfaceInteraction interaction = sampleSurfaceLightPosition(rng, pPos);
+  Vec3f direction = sampleHemisphereCosImportance(rng, interaction.normalGeometric, pDirection);
   Vec3f L = getEmissionRadiance(direction, interaction.geomID, interaction.primID);
-  (*flux) = L * (std::abs(dot(interaction.normalGeometric, direction)) / (pPos * pDirection));
-  assertFinite(*flux);
+  flux = L * (std::abs(dot(interaction.normalGeometric, direction)) / (pPos * pDirection));
+  assertFinite(flux);
   return constructRay(interaction, direction, true);
 }
-Ray Scene::sampleLightRayFromStartPoint(RNG& rng, const SurfaceInteraction& point, float* pDensity, RayHit *rayhit, bool *lightVisible)
+Ray Scene::sampleLightRayFromStartPoint(RNG& rng, const SurfaceInteraction& point, float& pDensity, RayHit& rayhit, bool& lightVisible)
 {
   assert(hasLight());
   Ray resultray;
@@ -512,17 +512,17 @@ Ray Scene::sampleLightRayFromStartPoint(RNG& rng, const SurfaceInteraction& poin
   if (useSurfaceSampling)
   {
     float pDensityA;
-    SurfaceInteraction interaction2 = sampleSurfaceLightPosition(rng, &pDensityA);
+    SurfaceInteraction interaction2 = sampleSurfaceLightPosition(rng, pDensityA);
     Vec3f diff = interaction2.x - point.x;
     Vec3f direction2 = normalize(diff);
     resultray = constructRayEnd(point, interaction2.x, dot(point.normalGeometric, diff) >= 0.0f); // pass end point so we have less numerical issues
   
     rayHit(resultray, rayhit);
-    *lightVisible = hasHitSurface(*rayhit, interaction2.geomID, interaction2.primID);
+    lightVisible = hasHitSurface(rayhit, interaction2.geomID, interaction2.primID);
   
-    if (*lightVisible)
+    if (lightVisible)
     {
-      (*pDensity) = evalLightRayFromStartPointDensity(point, resultray, *rayhit);
+      pDensity = evalLightRayFromStartPointDensity(point, resultray, rayhit);
     }
     // if we have hit the infinite area surface light then this was a numerical error that we ignore here, we set lightVisible to false and the sample gets ignored!
   }
@@ -533,14 +533,14 @@ Ray Scene::sampleLightRayFromStartPoint(RNG& rng, const SurfaceInteraction& poin
     resultray = constructRay(point, direction, dot(point.normalGeometric, direction) >= 0.0f);
     rayHit(resultray, rayhit);
     
-    bool surfaceLight = isSurfaceLight(*rayhit);
-    bool infiniteAreaLight = isInfiniteAreaLight(*rayhit);
+    bool surfaceLight = isSurfaceLight(rayhit);
+    bool infiniteAreaLight = isInfiniteAreaLight(rayhit);
 
-    *lightVisible = surfaceLight || infiniteAreaLight;
+    lightVisible = surfaceLight || infiniteAreaLight;
 
-    if (*lightVisible)
+    if (lightVisible)
     {
-      (*pDensity) = evalLightRayFromStartPointDensity(point, resultray, *rayhit);
+      pDensity = evalLightRayFromStartPointDensity(point, resultray, rayhit);
     }
   }
 

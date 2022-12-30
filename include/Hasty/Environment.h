@@ -55,7 +55,7 @@ public:
     valueSum = std::accumulate(b, e, 0.f);
   }
 
-  Vec2f sample(RNG& rng, float *density) const
+  Vec2f sample(RNG& rng, float &density) const
   {
     uint32_t idx = (*distribution)(rng);
     uint32_t x = idx % notNormalizedPdf.getWidth();
@@ -72,7 +72,7 @@ public:
     float v = (1.0f - xi1) * lower + xi1 * upper;
     float pxy = notNormalizedPdf(x, y) / valueSum;
     assert(pxy != 0.0f);
-    (*density) = widthF * heightF * pxy ; //  p(u,v) = p(u,v | x, y) * p(x, y), p(u,v | x, y) = p(xi0) / abs(det(jacobian0 )) p(xi1) / abs(det(jacobian1))
+    density = widthF * heightF * pxy ; //  p(u,v) = p(u,v | x, y) * p(x, y), p(u,v | x, y) = p(xi0) / abs(det(jacobian0 )) p(xi1) / abs(det(jacobian1))
     return Vec2f(u, v);
   }
 
@@ -136,7 +136,7 @@ public:
     return texture->evaluateUV(uv);
   }
 
-  Vec3f sample(RNG &rng, float *density) const
+  Vec3f sample(RNG &rng, float &density) const
   {
     SphericalCoordinates::ToDirectionResult scResult;
     do
@@ -145,7 +145,7 @@ public:
       Vec2f c = getSphericalCoordinatesFromUV(uv);
       scResult = SphericalCoordinates::ToDirection(c);
     } while (scResult.sinTheta == 0.0f);
-    (*density) /= (2.0f * float(Hasty::Pi) * float(Hasty::Pi) * scResult.sinTheta);
+    density /= (2.0f * float(Hasty::Pi) * float(Hasty::Pi) * scResult.sinTheta);
     return scResult.direction;
   }
   bool isZero() const

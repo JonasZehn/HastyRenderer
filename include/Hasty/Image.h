@@ -217,7 +217,8 @@ Image<_PixelTypeOut> transform(const Image<_PixelTypeIn>& image, Functor f)
   {
     for (int x = 0; x < width; x++)
     {
-      result(x, y) = f(x, y, image(x, y));
+      const _PixelTypeIn& p = image(x, y);
+      result(x, y) = f(x, y, p);
     }
   }
   return result;
@@ -231,7 +232,8 @@ Image<_PixelTypeIn> transformInplace(Image<_PixelTypeIn>& image, Functor f)
   {
     for (int x = 0; x < width; x++)
     {
-      image(x, y) = f(x, y, image(x, y));
+      const _PixelTypeIn& p = image(x, y);
+      image(x, y) = f(x, y, p);
     }
   }
   return image;
@@ -313,16 +315,10 @@ typedef DoubleBuffer<AccumulationBuffer<Vec4f> > Image4fAccDoubleBuffer;
 template<typename PixelType>
 void clampAndPowInplace(Image<PixelType> & image, float low, float high, float exponent)
 {
-  std::size_t width = image.getWidth();
-  std::size_t height = image.getHeight();
-
-  for (std::size_t i = 0; i < width; i++)
-  {
-    for (std::size_t j = 0; j < height; j++)
+  transformInplace(image, [low, high, exponent](int x, int y, const PixelType& p)
     {
-      image(i, j) = pow(clamp(image(i, j), low, high), exponent);
-    }
-  }
+      return pow(clamp(p, low, high), exponent);
+    });
 }
 
 }

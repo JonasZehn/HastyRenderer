@@ -56,7 +56,7 @@ Ray Camera::computeRay(RNG &rng, const Vec2f& p, float frameWidth, float frameHe
     Vec3f direction = m_forward + m_right * (q * lx) - m_up * (q * ly);
     direction = normalize(direction);
     float density;
-    Vec2f offset = sampleCircularNGonUniformly(rng, m_numBlades, m_bladeRotation, &density);
+    Vec2f offset = sampleCircularNGonUniformly(rng, m_numBlades, m_bladeRotation, density);
     float t = m_focalDistance * dot(direction, m_forward);
     Vec3f focalPoint = m_position + t * direction;
     Vec3f origin = m_position + m_apertureSize * offset[0] * m_up + m_apertureSize * offset[1] * m_right;

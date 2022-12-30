@@ -42,7 +42,7 @@ TEST(vmath, rodriguesRotation)
   RNG rng(0);
 
   float pDensity;
-  RotationBetweenTwoVectors<float, Vec3f> rot(sampleSphereSurfaceUniformly(rng, &pDensity), sampleSphereSurfaceUniformly(rng, &pDensity));
+  RotationBetweenTwoVectors<float, Vec3f> rot(sampleSphereSurfaceUniformly(rng, pDensity), sampleSphereSurfaceUniformly(rng, pDensity));
   Vec3f x0 = rng.uniform01Vec3f();
   Vec3f x1 = rot * x0;
   Vec3f x0prime = rot.applyInverse(x1);
@@ -58,7 +58,7 @@ TEST(vmath, sphericalCoordinates)
   for (int i = 0; i < 50; i++)
   {
     float pDensity;
-    Vec3f dir = sampleSphereSurfaceUniformly(rng, &pDensity);
+    Vec3f dir = sampleSphereSurfaceUniformly(rng, pDensity);
     auto fromResult = SphericalCoordinates::FromDirection(dir);
     auto toResult = SphericalCoordinates::ToDirection(fromResult);
     
@@ -80,9 +80,9 @@ TEST(brdf, sampleCosineLobe)
   for (int i = 0; i < 50; i++)
   {
     float pDensity;
-    Vec3f lobeDirection = sampleSphereSurfaceUniformly(rng, &pDensity);
+    Vec3f lobeDirection = sampleSphereSurfaceUniformly(rng, pDensity);
     float exponent = 1.0f + uniform01f(rng) * 10.0f;
-    Vec3f wi = sampleCosineLobe(rng, lobeDirection, exponent, &pDensity);
+    Vec3f wi = sampleCosineLobe(rng, lobeDirection, exponent, pDensity);
     EXPECT_NEARREL(norm(wi), 1.0f, 1e-5f);
     float pDensity2 = evaluateCosineLobePDF(lobeDirection, exponent, wi);
     EXPECT_NEARREL(pDensity, pDensity2, 1e-5f );
@@ -97,8 +97,8 @@ TEST(brdf, sampleHemisphereCosImportance)
   for (int i = 0; i < 50; i++)
   {
     float pDensity;
-    Vec3f normal = sampleSphereSurfaceUniformly(rng, &pDensity);
-    Vec3f wi = sampleHemisphereCosImportance(rng, normal, &pDensity);
+    Vec3f normal = sampleSphereSurfaceUniformly(rng, pDensity);
+    Vec3f wi = sampleHemisphereCosImportance(rng, normal, pDensity);
     EXPECT_NEARREL(norm(wi), 1.0f, 1e-4f);
     float pDensity2 = evaluateHemisphereCosImportancePDF(normal, wi);
     EXPECT_NEARREL(pDensity, pDensity2, 1e-4f );
@@ -113,14 +113,14 @@ TEST(brdf, DGGX)
   float n = 50000;
   float alpha = 0.3f;
   float pDensity;
-  Vec3f normal = sampleSphereSurfaceUniformly(rng, &pDensity);
-  Vec3f wo = sampleHemisphereSurfaceUniformly(rng, normal, &pDensity);
+  Vec3f normal = sampleSphereSurfaceUniformly(rng, pDensity);
+  Vec3f wo = sampleHemisphereSurfaceUniformly(rng, normal, pDensity);
   Vec3f tangent = anyOrthonormal(normal);
   Vec3f bitangent = cross(normal, tangent);
   for (int i = 0; i < n; i++)
   {
-    //Vec3f wi = sampleGGXVNDFGlobal(rng, normal, alpha, wo, &pDensity);
-    wo = sampleHemisphereSurfaceUniformly(rng, normal, &pDensity);
+    //Vec3f wi = sampleGGXVNDFGlobal(rng, normal, alpha, wo, pDensity);
+    wo = sampleHemisphereSurfaceUniformly(rng, normal, pDensity);
     float d = DGGX(dot(normal, wo), dot(tangent, wo), dot(bitangent, wo), alpha, alpha);
     EXPECT_TRUE(d >= 0.0f);
     sum += d * dot(normal, wo) / pDensity;
@@ -137,9 +137,9 @@ TEST(brdf, sampleDGGX)
   {
     float alpha = std::max(1e-2f, uniform01f(rng));
     float pDensity;
-    Vec3f normal = sampleSphereSurfaceUniformly(rng, &pDensity);
-    Vec3f wo = sampleHemisphereSurfaceUniformly(rng, normal, &pDensity);
-    Vec3f wi = sampleDGGX(rng, normal, alpha, wo, &pDensity);
+    Vec3f normal = sampleSphereSurfaceUniformly(rng, pDensity);
+    Vec3f wo = sampleHemisphereSurfaceUniformly(rng, normal, pDensity);
+    Vec3f wi = sampleDGGX(rng, normal, alpha, wo, pDensity);
     EXPECT_NEARREL(norm(wi), 1.0f, 1e-4f);
     float pDensity2 = sampleDGGXDensity(normal, alpha, wo, wi);
     EXPECT_NEARREL(pDensity, pDensity2, 1e-2f );
@@ -151,7 +151,7 @@ TEST(brdf, sampleDGGX2)
   
   float alpha = 1.0f;
   float pDensity;
-  Vec3f normal = sampleSphereSurfaceUniformly(rng, &pDensity);
+  Vec3f normal = sampleSphereSurfaceUniformly(rng, pDensity);
   // we can only use this as a sampling distribution if we choose wo = normal, otherwise not the whole hemisphere is properly samples....
   Vec3f wo = normal;
 
@@ -159,7 +159,7 @@ TEST(brdf, sampleDGGX2)
   float n = 500000;
   for (int i = 0; i < n; i++)
   {
-    Vec3f wi = sampleDGGX(rng, normal, alpha, wo, &pDensity);
+    Vec3f wi = sampleDGGX(rng, normal, alpha, wo, pDensity);
     EXPECT_TRUE(pDensity >= 0.0f);
     sum += std::max(0.0f, dot(normal, wi)) / pDensity;
   }
@@ -174,11 +174,11 @@ TEST(brdf, sampleGGXVNDFGlobal)
   {
     float alpha = std::max(1e-2f, uniform01f(rng));
     float pDensity;
-    Vec3f normal = sampleSphereSurfaceUniformly(rng, &pDensity);
-    Vec3f wo = sampleHemisphereSurfaceUniformly(rng, normal, &pDensity);
+    Vec3f normal = sampleSphereSurfaceUniformly(rng, pDensity);
+    Vec3f wo = sampleHemisphereSurfaceUniformly(rng, normal, pDensity);
     Vec3f tangent = anyOrthonormal(normal);
     Vec3f bitangent = cross(normal, tangent);
-    Vec3f wi = sampleGGXVNDFGlobal(rng, normal, alpha, alpha, tangent, bitangent, wo, &pDensity);
+    Vec3f wi = sampleGGXVNDFGlobal(rng, normal, alpha, alpha, tangent, bitangent, wo, pDensity);
     EXPECT_TRUE(pDensity >= 0.0f);
     EXPECT_NEARREL(norm(wi), 1.0f, 1e-4f);
     float pDensity2 = sampleGGXVNDFGlobalDensity(normal, alpha, alpha, tangent, bitangent, wo, wi);
@@ -191,7 +191,7 @@ TEST(brdf, sampleGGXVNDFGlobal2)
   
   float alpha = 1.0f;
   float pDensity;
-  Vec3f normal = sampleSphereSurfaceUniformly(rng, &pDensity);
+  Vec3f normal = sampleSphereSurfaceUniformly(rng, pDensity);
   // we can only use this as a sampling distribution if we choose wo = normal, otherwise not the whole hemisphere is properly samples....
   Vec3f wo = normal;
 
@@ -201,7 +201,7 @@ TEST(brdf, sampleGGXVNDFGlobal2)
   {
     Vec3f tangent = anyOrthonormal(normal);
     Vec3f bitangent = cross(normal, tangent);
-    Vec3f wi = sampleGGXVNDFGlobal(rng, normal, alpha, alpha, tangent, bitangent, wo, &pDensity);
+    Vec3f wi = sampleGGXVNDFGlobal(rng, normal, alpha, alpha, tangent, bitangent, wo, pDensity);
     EXPECT_TRUE(pDensity >= 0.0f);
     sum += std::max(0.0f, dot(normal, wi)) / pDensity;
   }
@@ -215,8 +215,8 @@ TEST(brdf, refraction)
   Vec3f wi = normalize(Vec3f(0.15f, 0.05f, 1.0f));
   Vec3f wo, wi2;
   //checking going in and out gives the same direction
-  computeRefractionDirection(wi, normal, 1.45f, 1.0f, &wo);
-  computeRefractionDirection(wo, -normal, 1.0f, 1.45f, &wi2);
+  computeRefractionDirection(wi, normal, 1.45f, 1.0f, wo);
+  computeRefractionDirection(wo, -normal, 1.0f, 1.45f, wi2);
   
   EXPECT_NEARREL(wi[0], wi2[0], 1e-5f);
   EXPECT_NEARREL(wi[1], wi2[1], 1e-5f);

@@ -21,7 +21,7 @@ MISSampleResult BRDFSamplingStrategy::sample(RenderContext context, const LightR
   result.throughputDiffuse = sampleResult.throughputDiffuse;
   result.throughputConcentrated = sampleResult.throughputConcentrated;
   result.pdfOmega = sampleResult.pdfOmega;
-  context.scene.rayHit(result.ray, &result.rayhit);
+  context.scene.rayHit(result.ray, result.rayhit);
   return result;
 }
 float BRDFSamplingStrategy::evalPDF(RenderContext context, const RayHit& rayhit, const LightRayInfo& lightRay, const Vec3f& woGlobal, const Ray& ray2, const RayHit& rayhit2)
@@ -35,7 +35,7 @@ MISSampleResult LightSamplingStrategy::sample(RenderContext context, const Light
   result.lightRay = lightRay;
 
   bool lightVisible;
-  result.ray = context.scene.sampleLightRayFromStartPoint(context.rng, rayhit.interaction, &result.pdfOmega, &result.rayhit, &lightVisible);
+  result.ray = context.scene.sampleLightRayFromStartPoint(context.rng, rayhit.interaction, result.pdfOmega, result.rayhit, lightVisible);
   
   if (!lightVisible || result.pdfOmega == 0.0f)
   {

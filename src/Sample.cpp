@@ -2,14 +2,14 @@
 
 namespace Hasty
 {
-Vec2f sampleDiskUniformly(RNG& rng, float* pDensity)
+Vec2f sampleDiskUniformly(HASTY_INOUT(RNG) rng, HASTY_OUT(float) pDensity)
 {
   float alpha = uniform01f(rng) * float(2.0 * Hasty::Pi);
   float r = std::sqrt(uniform01f(rng));
-  (*pDensity) = float(Hasty::InvPi);
+  pDensity = float(Hasty::InvPi);
   return Vec2f(r * std::cos(alpha), r * std::sin(alpha));
 }
-Vec2f sampleCircularNGonUniformly(RNG& rng, int numBlades, float bladeRotation, float* pDensity)
+Vec2f sampleCircularNGonUniformly(HASTY_INOUT(RNG) rng, int numBlades, float bladeRotation, HASTY_OUT(float) pDensity)
 {
   assert(bladeRotation >= float(-Hasty::Pi));
   assert(numBlades >= 3);
@@ -36,13 +36,13 @@ Vec2f sampleCircularNGonUniformly(RNG& rng, int numBlades, float bladeRotation, 
 
   float areaSector = 0.5 * std::sin(anglePerSector); // Area = 0.5 * radius * radius * sin(anglePerSector)
   float areaNGon = numBlades * areaSector;
-  (*pDensity) = 1.0 / areaNGon;
+  pDensity = 1.0 / areaNGon;
 
   return sample;
 }
-Vec3f sampleSphereSurfaceUniformly(RNG& rng, float* pDensity)
+Vec3f sampleSphereSurfaceUniformly(HASTY_INOUT(RNG) rng, HASTY_OUT(float) pDensity)
 {
-  (*pDensity) = 0.25f * float(InvPi); // 4 pi = Area of sphere with radius 1
+  pDensity = 0.25f * float(InvPi); // 4 pi = Area of sphere with radius 1
   while (true)
   {
     Vec3f r(rng.uniformm11f(), rng.uniformm11f(), rng.uniformm11f());
@@ -56,9 +56,9 @@ Vec3f sampleSphereSurfaceUniformly(RNG& rng, float* pDensity)
 }
 
 
-Vec3f sampleHemisphereSurfaceUniformly(RNG& rng, const Vec3f& normal, float* pDensity)
+Vec3f sampleHemisphereSurfaceUniformly(HASTY_INOUT(RNG) rng, const Vec3f& normal, HASTY_OUT(float) pDensity)
 {
-  (*pDensity) = 0.5f * float(InvPi); // 2 pi = Area of hemisphere with radius 1
+  pDensity = 0.5f * float(InvPi); // 2 pi = Area of hemisphere with radius 1
   while (true)
   {
     Vec3f r(rng.uniformm11f(), rng.uniformm11f(), rng.uniformm11f());
@@ -74,7 +74,7 @@ Vec3f sampleHemisphereSurfaceUniformly(RNG& rng, const Vec3f& normal, float* pDe
   return Vec3f::Zero();
 }
 
-Vec3f sampleHemisphereCosImportance(RNG& rng, const Vec3f& normal, float* pDensity)
+Vec3f sampleHemisphereCosImportance(HASTY_INOUT(RNG) rng, const Vec3f& normal, HASTY_OUT(float) pDensity)
 {
   // we want to imporance sample \omega such that \omega ~ n.dot(\omega) = cos(theta)
   // since d\omega = sin(\theta) d\theta d\phi , we need (\phi, \theta) ~ (uniform, sin(\theta) cos(\theta) )
@@ -103,7 +103,7 @@ Vec3f sampleHemisphereCosImportance(RNG& rng, const Vec3f& normal, float* pDensi
     costheta = dot(dir, normal);
   } while (costheta <= 0.0f); // stay clear from numerical mistakes
 
-  (*pDensity) = float(InvPi) * costheta;
+  pDensity = float(InvPi) * costheta;
   return dir;
 }
 float evaluateHemisphereCosImportancePDF(const Vec3f& normal, const Vec3f& direction)
@@ -118,7 +118,7 @@ float evaluateHemisphereCosImportancePDF(const Vec3f& normal, const Vec3f& direc
 // https://cseweb.ucsd.edu/~viscomp/classes/cse168/sp21/lectures/168-lecture9.pdf
 // https://alexanderameye.github.io/notes/sampling-the-hemisphere/
 // https://digibug.ugr.es/bitstream/handle/10481/19751/rmontes_LSI-2012-001TR.pdf
-Vec3f sampleCosineLobe(RNG& rng, const Vec3f& lobeDirection, float exponent, float* pDensity)
+Vec3f sampleCosineLobe(HASTY_INOUT(RNG) rng, const Vec3f& lobeDirection, float exponent, HASTY_OUT(float) pDensity)
 {
   // here we just sample according to  \theta ~ cos(\theta)^exponent sin(\theta), and then the vector is transformed into the lobe frame
   // this doesn't create directions on the whole hemisphere wrt the normal!
@@ -145,7 +145,7 @@ Vec3f sampleCosineLobe(RNG& rng, const Vec3f& lobeDirection, float exponent, flo
     costheta = dot(dir, lobeDirection);
   } while (costheta <= 0.0f); // stay clear from numerical mistakes
 
-  (*pDensity) = (exponent + 1.0f) * 0.5f * float(InvPi) * std::pow(costheta, exponent);
+  pDensity = (exponent + 1.0f) * 0.5f * float(InvPi) * std::pow(costheta, exponent);
   return dir;
 }
 
@@ -156,7 +156,7 @@ float evaluateCosineLobePDF(const Vec3f& lobeDirection, float exponent, const Ve
   return (exponent + 1.0f) * 0.5f * float(InvPi) * std::pow(cosTheta, exponent);
 }
 
-Vec3f sampleTriangleUniformly(RNG& rng)
+Vec3f sampleTriangleUniformly(HASTY_INOUT(RNG) rng)
 {
   // https://math.stackexchange.com/questions/1785136/generating-randomly-distributed-points-inside-a-given-triangle
   // [s,q] ~ U([0, 1]^2)

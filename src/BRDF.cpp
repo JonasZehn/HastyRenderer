@@ -6,7 +6,7 @@
 namespace Hasty
 {
 
-bool computeRefractionDirection(const Vec3f& wi, const Vec3f& normal, float indexOfRefraction_i, float indexOfRefraction_t, Vec3f* wt)
+bool computeRefractionDirection(const Vec3f& wi, const Vec3f& normal, float indexOfRefraction_i, float indexOfRefraction_t, HASTY_OUT(Vec3f) wt)
 {
   // t stands for transmittance
   //https://www.pbr-book.org/3ed-2018/Reflection_Models/Specular_Reflection_and_Transmission#sec:specular-transmit
@@ -22,11 +22,11 @@ bool computeRefractionDirection(const Vec3f& wi, const Vec3f& normal, float inde
     return false;
   }
   float cos_t = std::sqrt(1.0f - sin_tSq);
-  (*wt) = (-relIOR) * wi + (relIOR * cos_i - cos_t) * normal;
-  (*wt) = normalize(*wt);
+  wt = (-relIOR) * wi + (relIOR * cos_i - cos_t) * normal;
+  wt = normalize(wt);
   return true;
 }
-bool computeRefractionCosT(float cos_i, float indexOfRefraction_i, float indexOfRefraction_t, float* cos_t)
+bool computeRefractionCosT(float cos_i, float indexOfRefraction_i, float indexOfRefraction_t, HASTY_OUT(float) cos_t)
 {
   assert(cos_i >= 0.0f);
 
@@ -42,7 +42,7 @@ bool computeRefractionCosT(float cos_i, float indexOfRefraction_i, float indexOf
     // in this case we get total internal reflection and we can't compute cos_t (going complex)
     return false;
   }
-  *cos_t = std::sqrt(1.0f - sin_tSq);
+  cos_t = std::sqrt(1.0f - sin_tSq);
   return true;
 }
 
@@ -80,12 +80,12 @@ float fresnelDielectric(float cos_i, float cos_t, float indexOfRefraction_i, flo
 
 // https://agraphicsguy.wordpress.com/2015/11/01/sampling-microfacet-brdf/
 // https://schuttejoe.github.io/post/ggximportancesamplingpart1/
-Vec3f sampleDGGX(RNG& rng, const Vec3f& normal, float alpha, const Vec3f& dir1, float* pDensity)
+Vec3f sampleDGGX(HASTY_INOUT(RNG) rng, const Vec3f& normal, float alpha, const Vec3f& dir1, HASTY_OUT(float) pDensity)
 {
   if(dot(dir1, normal) < 0.0f)
   {
     std::cout << " warning sampleDGGX from the inside" << '\n';
-    (*pDensity) = 1.0f;
+    pDensity = 1.0f;
     return -normal;
   }
   // theta_h ~ alpha*alpha * cos(theta_h) sin(theta_h) / (float(Pi) * (q * q)), q = (cos(theta_h) ^2 ) * (alpha * alpha - 1.0f) + 1.0f,   q(0) = a^2, q(\pi/2) = 1
@@ -121,7 +121,7 @@ Vec3f sampleDGGX(RNG& rng, const Vec3f& normal, float alpha, const Vec3f& dir1, 
   float nh = dot(normal, h);
   float q = (nh * nh) * (alpha * alpha - 1.0f) + 1.0f;
   float pDensityH = alpha * alpha * nh / (float(Pi) * (q * q));
-  (*pDensity) = pDensityH / std::abs(4.0f * dot(dir1, h));
+  pDensity = pDensityH / std::abs(4.0f * dot(dir1, h));
   return dir2;
 }
 float sampleDGGXDensity(const Vec3f& normal, float alpha, const Vec3f& dir1, const Vec3f& dir2)
@@ -181,12 +181,12 @@ Vec3f sampleGGXVNDF(Vec3f wOut, float alphaX, float alphaY, float xi1, float xi2
 
   return Ne;
 }
-Vec3f sampleGGXVNDFGlobal(RNG& rng, const Vec3f& normal, float alpha_t, float alpha_b, const Vec3f& tangent, const Vec3f& bitangent, const Vec3f& dir1, float* pDensity)
+Vec3f sampleGGXVNDFGlobal(HASTY_INOUT(RNG) rng, const Vec3f& normal, float alpha_t, float alpha_b, const Vec3f& tangent, const Vec3f& bitangent, const Vec3f& dir1, HASTY_OUT(float) pDensity)
 {
   if(dot(dir1, normal) <= 0.0f)
   {
     std::cout << " warning sampleGGXVNDFGlobal from the inside" << '\n';
-    (*pDensity) = 0.0f;
+    pDensity = 0.0f;
     return -normal;
   }
 
@@ -206,7 +206,7 @@ Vec3f sampleGGXVNDFGlobal(RNG& rng, const Vec3f& normal, float alpha_t, float al
   float G1 = smithGGX(dot(normal, dir1), dot(tangent, dir1), dot(bitangent, dir1), alpha_t, alpha_b);
   float D_ggx = DGGX(dot(normal, NeGlobal), dot(tangent, NeGlobal), dot(bitangent, NeGlobal), alpha_t, alpha_b);
   float pDensityH = G1 * dot(dir1, NeGlobal) * D_ggx / dot(dir1, normal);
-  (*pDensity) = pDensityH / (1e-7f + 4.0f * std::abs(dot(dir1, NeGlobal)));
+  pDensity = pDensityH / (1e-7f + 4.0f * std::abs(dot(dir1, NeGlobal)));
   return dir2;
 }
 float sampleGGXVNDFGlobalDensity(const Vec3f& normal, float alpha_t, float alpha_b, const Vec3f& tangent, const Vec3f& bitangent, const Vec3f& dir1, const Vec3f& dir2)
@@ -301,7 +301,7 @@ PrincipledBRDF::ProbabilityResult PrincipledBRDF::computeProbability(float metal
 {
   assert(cos_o >= 0.0f);
   ProbabilityResult result;
-  result.refractionPossible = computeRefractionCosT(cos_o, indexOfRefraction_o, indexOfRefraction_refr_o, &result.cosT);
+  result.refractionPossible = computeRefractionCosT(cos_o, indexOfRefraction_o, indexOfRefraction_refr_o, result.cosT);
   if(result.refractionPossible)
   {
     result.FDaccurate = fresnelDielectric(cos_o, result.cosT, indexOfRefraction_o, indexOfRefraction_refr_o); // goes from 0 to 1 for cos_i going from 0 to 90 degrees, at higher degrees we get more reflection
@@ -341,7 +341,7 @@ PrincipledBRDF::ProbabilityResult PrincipledBRDF::computeProbability(float metal
 
   return result;
 }
-void PrincipledBRDF::computeAnisotropyParameters(const SurfaceInteraction& interaction, const Vec3f& normalShading, float alpha, float& alpha_t, float& alpha_b, Vec3f& tangent, Vec3f& bitangent)
+void PrincipledBRDF::computeAnisotropyParameters(const SurfaceInteraction& interaction, const Vec3f& normalShading, float alpha, HASTY_OUT(float) alpha_t, HASTY_OUT(float) alpha_b, HASTY_OUT(Vec3f) tangent, HASTY_OUT(Vec3f) bitangent)
 {
   float aspect = std::sqrt(1.0f - 0.9f * anisotropy);
   alpha_t = alpha / aspect;
@@ -479,7 +479,7 @@ MaterialEvalResult PrincipledBRDF::evaluate(const SurfaceInteraction& interactio
   return result;
 }
 
-SampleResult PrincipledBRDF::sample(RNG& rng, const SurfaceInteraction& interaction, const LightRayInfo& lightRay, const Vec3f& wo, OutsideIORFunctor getOutsideIOR, bool adjoint, ShaderEvalFlag evalFlag)
+SampleResult PrincipledBRDF::sample(HASTY_INOUT(RNG) rng, const SurfaceInteraction& interaction, const LightRayInfo& lightRay, const Vec3f& wo, OutsideIORFunctor getOutsideIOR, bool adjoint, ShaderEvalFlag evalFlag)
 {
   SampleResult result;
   result.lightRay = lightRay;
@@ -592,7 +592,7 @@ SampleResult PrincipledBRDF::sample(RNG& rng, const SurfaceInteraction& interact
     else
     {
       float pdfSpec;
-      result.direction = sampleGGXVNDFGlobal(rng, normalShading, alpha_t, alpha_b, tangent, bitangent, wo, &pdfSpec);
+      result.direction = sampleGGXVNDFGlobal(rng, normalShading, alpha_t, alpha_b, tangent, bitangent, wo, pdfSpec);
       float pdfDiffuse = evaluateHemisphereCosImportancePDF(normalShading, result.direction);
 
       result.pdfOmega = probabilityResult.pSpecularStrategy * pdfSpec + probabilityResult.pDiffuseStrategy * pdfDiffuse;
@@ -612,7 +612,7 @@ SampleResult PrincipledBRDF::sample(RNG& rng, const SurfaceInteraction& interact
   else if(strategy == PBRDF_STRATEGY_DIFFUSE)
   {
     float pdfDiffuse;
-    result.direction = sampleHemisphereCosImportance(rng, normalShading, &pdfDiffuse);
+    result.direction = sampleHemisphereCosImportance(rng, normalShading, pdfDiffuse);
     const Vec3f& wi = result.direction;
     float normalScale = computeNormalScale(wi, normalShading, interaction.normalGeometric);
 

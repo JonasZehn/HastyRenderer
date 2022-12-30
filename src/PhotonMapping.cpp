@@ -199,7 +199,7 @@ void tracePhoton(RenderContext context, PhotonMap& photonMap, const Ray& a_ray, 
 
   Ray ray = a_ray;
   RayHit rayhit;
-  context.scene.rayHit(ray, &rayhit);
+  context.scene.rayHit(ray, rayhit);
   if (!hasHitSurface(rayhit)) return;
 
   Vec3f transmittance = beersLaw(lightRay.getTransmittance(), norm(rayhit.interaction.x - ray.origin()) );
@@ -242,7 +242,7 @@ void tracePhoton(RenderContext context, PhotonMap& photonMap, const Ray& a_ray, 
 
     Ray ray2 = context.scene.constructRay(rayhit.interaction, sampleResult.direction, sampleResult.outside);
     RayHit rayhit2;
-    context.scene.rayHit(ray2, &rayhit2);
+    context.scene.rayHit(ray2, rayhit2);
     if (!hasHitSurface(rayhit2) || isSelfIntersection(rayhit, rayhit2)) break;
 
     //beer's law; moving from hit.x to hit2.x;
@@ -373,7 +373,7 @@ GatherPhotonsResult gatherPhotons(RenderContext context, PhotonMap& photonMap, c
 
     Ray ray2 = context.scene.constructRay(rayhit.interaction, sampleResult.direction, sampleResult.outside);
     RayHit rayhit2;
-    context.scene.rayHit(ray2, &rayhit2);
+    context.scene.rayHit(ray2, rayhit2);
 
     lightRay.updateMedia(context, rayhit, ray2.direction());
 
@@ -412,7 +412,7 @@ PathTraceWithCausticsMapResult pathTraceWithCausticsMap(RenderContext context, P
   
   RayHit rayhitLocal;
   RayHit& rayhit = rayhitPtr == nullptr ? rayhitLocal : *rayhitPtr;
-  if (rayhitPtr == nullptr) context.scene.rayHit(ray, &rayhit);
+  if (rayhitPtr == nullptr) context.scene.rayHit(ray, rayhit);
 
   PhotonSearchResult photons;
 
@@ -586,7 +586,7 @@ float computeRadiusPixelFootPrint(RenderContext context, float defaultR, int i, 
   Vec2f offset(0.5f, 0.5f);
   Ray ray = context.scene.camera.computeRay(context.rng, p0 + offset, float(width), float(height));
   RayHit rayhit;
-  context.scene.rayHit(ray, &rayhit);
+  context.scene.rayHit(ray, rayhit);
   if (!hasHitSurface(rayhit))
   {
     return defaultR;
@@ -617,7 +617,7 @@ float computeRadiusPixelFootPrint(RenderContext context, float defaultR, int i, 
 
       Ray ray2 = context.scene.constructRay(rayhit.interaction, sampleResult.direction, sampleResult.outside);
       RayHit rayhit2;
-      context.scene.rayHit(ray2, &rayhit2);
+      context.scene.rayHit(ray2, rayhit2);
       
       if (!hasHitSurface(rayhit2) || isSelfIntersection(rayhit, rayhit2))
       {
@@ -719,7 +719,7 @@ Image1f computeInitialRadiiTrace(RenderContext context, PMRenderJob& job, Photon
   for (int i = 0; i <  tracethreshold && photonMap.photonCount() < tracethreshold; i++)
   {
     Vec3f flux;
-    Ray ray = scene.sampleLightRay(context.rng, &flux);
+    Ray ray = scene.sampleLightRay(context.rng, flux);
     photonMap.increaseEmittedCount();
     tracePhoton(context, photonMap, ray, flux, causticsMap);
   }
@@ -748,7 +748,7 @@ Image1f computeInitialRadiiTrace(RenderContext context, PMRenderJob& job, Photon
         Vec2f offset(0.5f, 0.5f);
         Ray ray = context.scene.camera.computeRay(context.rng, p0 + offset, float(job.renderSettings.width), float(job.renderSettings.height));
         RayHit rayhit;
-        context.scene.rayHit(ray, &rayhit);
+        context.scene.rayHit(ray, rayhit);
         if (!hasHitSurface(rayhit))
         {
           continue;
@@ -864,7 +864,7 @@ void renderPhotonThread(Image3fAccDoubleBuffer& colorBuffer, Image3fAccDoubleBuf
       for (int i = 0; i < tracethreshold && photonMap.photonCount() < countThreshold; i++)
       {
         Vec3f flux;
-        Ray ray = scene.sampleLightRay(rng, &flux);
+        Ray ray = scene.sampleLightRay(rng, flux);
         totalFlux += flux;
         photonMap.increaseEmittedCount();
         tracePhoton(context, photonMap, ray, flux, true);
@@ -905,7 +905,7 @@ void renderPhotonThread(Image3fAccDoubleBuffer& colorBuffer, Image3fAccDoubleBuf
         }
         else
         {
-          Lnew = job.unlockAndUpdateStatistic(i, j, photonsResult.photonFlux, L, photonsResult.M, photonMap.emittedCount(), &radius);
+          Lnew = job.unlockAndUpdateStatistic(i, j, photonsResult.photonFlux, L, photonsResult.M, photonMap.emittedCount(), radius);
         }
         assertFinite(Lnew);
         assertFinite(normal);
