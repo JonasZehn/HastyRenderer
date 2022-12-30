@@ -26,6 +26,7 @@ struct CameraUniformBufferObject {
 struct MaterialUniformBufferObject {
   alignas(4) Vec3f emission;
   alignas(4) float specular;
+  alignas(4) float transmission;
 };
 struct PushConstantsSample {
   int32_t nSamples;
@@ -185,6 +186,7 @@ public:
       MaterialUniformBufferObject material;
       material.emission = scene.getMaterialEmission(materialIdx);
       material.specular = 0.0f;
+      material.transmission = 0.0f;
 
       Image1f constImage1f(1, 1);
       constImage1f(0, 0) = 0.0f;
@@ -201,6 +203,7 @@ public:
           roughnessImage = getImagePointer<float>(&principledBRDF->getRoughness());
 
           material.specular = principledBRDF->getSpecular();
+          material.transmission = principledBRDF->getTransmission();
         }
       }
 

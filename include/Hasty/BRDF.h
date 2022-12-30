@@ -109,6 +109,7 @@ public:
   const ITextureMap1f& getMetallic() const { return *metallic; }
 
   float getSpecular() const { return specular; }
+  float getTransmission() const { return transmission; }
 
   // returns normal in direction of wo
   Vec3f getShadingNormal(const SurfaceInteraction& interaction, const Vec3f& wo, float dotNgWo);
@@ -125,7 +126,7 @@ public:
     float cosT;
   };
   ProbabilityResult computeProbability(float metallicHit, float specularHit, float transmissionHit, float cos_o, float indexOfRefraction_o, float indexOfRefraction_t, ShaderEvalFlag evalFlag);
-  void computeAnisotropyParameters(const SurfaceInteraction& interaction, const Vec3f& normalShading, float alpha, HASTY_OUT(float) alpha_t, HASTY_OUT(float) alpha_b, HASTY_OUT(Vec3f) tangent, HASTY_OUT(Vec3f) bitangent);
+  void computeAnisotropyParameters(const SurfaceInteraction& interaction, const Vec3f& normalShading, float alpha, float anisotropyHit, HASTY_OUT(float) alpha_t, HASTY_OUT(float) alpha_b, HASTY_OUT(Vec3f) tangent, HASTY_OUT(Vec3f) bitangent);
   MaterialEvalResult evaluate(const SurfaceInteraction& interaction, const Vec3f& wo, const Vec3f& wi, float indexOfRefractionOutside, bool adjoint, ShaderEvalFlag evalFlag);
   SampleResult sample(HASTY_INOUT(RNG) rng, const SurfaceInteraction& interaction, const LightRayInfo& lightRay, const Vec3f& wOut, OutsideIORFunctor getOutsideIOR, bool adjoint, ShaderEvalFlag evalFlag);
   float evaluateSamplePDF(const SurfaceInteraction& interaction, const Vec3f& wo, const Vec3f& wi, float outsideIOR);

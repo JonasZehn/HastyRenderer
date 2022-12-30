@@ -9,6 +9,7 @@ const float InvPi = 0.318309886183790671;
 struct Material {
 	vec3 emission;
 	float specular;
+	float transmission;
 };
 
 layout(local_size_x = 4, local_size_y = 4, local_size_z = 1) in;
@@ -273,7 +274,7 @@ SurfaceInteraction getSurfaceInteraction(rayQueryEXT rayQuery){
 	result.tangent = anyOrthonormal(result.normalGeometric);
 	result.bitangent = cross(result.normalGeometric, result.tangent);
 	
-	result.normalShadingDefault = ;
+	result.normalShadingDefault = result.normalGeometric;
 	
 	return result;
 }
@@ -286,7 +287,7 @@ vec3 getEmissionRadiance(vec3 wo, vec3 normal, Material material){
 struct MaterialEvalResult
 {
 	vec3 fDiffuse;
-	vec3 fSpecular;
+	vec3 fConcentrated;
 	vec3 normalShading;
 };
 struct SampleResult
@@ -294,8 +295,9 @@ struct SampleResult
 	bool outside;
 	vec3 direction;
 	vec3 throughputDiffuse;
-	vec3 throughputSpecular;
+	vec3 throughputConcentrated;
 	float pdfOmega;
+	vec3 debug;
 };
 
 
@@ -303,34 +305,183 @@ MaterialEvalResult MaterialEvalResultInit(vec3 d, vec3 s, vec3 n)
 {
 	MaterialEvalResult result;
 	result.fDiffuse = d;
-	result.fSpecular = s;
+	result.fConcentrated = s;
 	result.normalShading = n;
 	return result;
 }
 
-float PrincipledBRDFcomputeAlpha(float roughness)
-{
-	float alpha = roughness * roughness;
-	if (alpha < 1e-2f && alpha != 0.0f)
-	{
-		alpha = 1e-2f;
-	}
-	return alpha;
-}
+////////BRDF.h 
 
+//enum class ShaderEvalFlag
+//{
+//  NONE = 0,
+//  DIFFUSE = 1,
+//  CONCENTRATED = 2,
+//  ALL = DIFFUSE | CONCENTRATED
+//};
+
+struct PrincipledBRDFProbabilityResult
+{
+	bool noStrategy;
+	float pDiffuseStrategy;
+	float pSpecularStrategy;
+	float pRefractiveStrategy;
+	bool refractionPossible;
+	float FDaccurate;
+	float cosT;
+};
+
+//////// BRDF.cpp
 
 float square(float f){ return f*f; }
 
+
+bool computeRefractionDirection(vec3 wi, vec3 normal, float indexOfRefraction_i, float indexOfRefraction_t, out vec3 wt)
+{
+	// t stands for transmittance
+	//https://www.pbr-book.org/3ed-2018/Reflection_Models/Specular_Reflection_and_Transmission#sec:specular-transmit
+	float relIOR = indexOfRefraction_i / indexOfRefraction_t;
+	float cos_i = dot(wi, normal);
+	//assert(cos_i >= 0.0f);
+	//float side = cos_i >= 0.0f ? 1.0f : -1.0f;
+	float sin_iSq = max(0.f, 1.f - cos_i * cos_i);
+	float sin_tSq = (relIOR * relIOR) * sin_iSq;
+	if(sin_tSq >= 1.0f)
+	{
+		// in this case we get total internal reflection and we can't compute cos_t (going complex)
+		return false;
+	}
+	float cos_t = sqrt(1.0f - sin_tSq);
+	wt = (-relIOR) * wi + (relIOR * cos_i - cos_t) * normal;
+	wt = normalize(wt);
+	return true;
+}
+bool computeRefractionCosT(float cos_i, float indexOfRefraction_i, float indexOfRefraction_t, out float cos_t)
+{
+	//assert(cos_i >= 0.0f);
+
+	// t stands for transmittance
+	//https://www.pbr-book.org/3ed-2018/Reflection_Models/Specular_Reflection_and_Transmission#sec:specular-transmit
+	float relIOR = indexOfRefraction_i / indexOfRefraction_t;
+
+	//float side = cos_i >= 0.0f ? 1.0f : -1.0f;
+	float sin_iSq = max(0.f, 1.f - cos_i * cos_i);
+	float sin_tSq = (relIOR * relIOR) * sin_iSq;
+	if(sin_tSq >= 1.0f)
+	{
+		// in this case we get total internal reflection and we can't compute cos_t (going complex)
+		return false;
+	}
+	cos_t = sqrt(1.0f - sin_tSq);
+	return true;
+}
+
+// normal points in the same direction as wi
+vec3 computeRefractionDirectionFromAngles(vec3 wi, vec3 normal, float IORi_over_IORt, float cos_i, float cos_t)
+{
+	//assert(dot(wi, normal) >= 0.0f);
+	//assert(cos_i >= 0.0f);
+	//assert(cos_t >= 0.0f);
+
+	vec3 wt = (-IORi_over_IORt) * wi + (IORi_over_IORt * cos_i - cos_t) * normal;
+	wt = normalize(wt);
+	return wt;
+}
+
+//https://psgraphics.blogspot.com/2016/12/bug-in-my-schlick-code.html?m=0
+float fresnelSchlick(float cos_i, float indexOfRefraction_i, float indexOfRefraction_t)
+{
+	//https://en.wikipedia.org/wiki/Schlick%27s_approximation
+	float R0 = square((indexOfRefraction_i - indexOfRefraction_t) / (indexOfRefraction_i + indexOfRefraction_t));
+	float cosT = cos_i;
+	return R0 + (1.0f - R0) * pow(1.0f - cosT, 5.0f);
+}
+
+// https://www.pbr-book.org/3ed-2018/Reflection_Models/Specular_Reflection_and_Transmission
+// https://web.cse.ohio-state.edu/~parent.1/classes/782/Lectures/05_Reflectance.pdf
+float fresnelDielectric(float cos_i, float cos_t, float indexOfRefraction_i, float indexOfRefraction_t)
+{
+	//assert(cos_i >= 0.0f);
+	//assert(cos_t >= 0.0f);
+	float rp = (indexOfRefraction_t * cos_i - indexOfRefraction_i * cos_t) / (indexOfRefraction_t * cos_i + indexOfRefraction_i * cos_t);
+	float ro = (indexOfRefraction_i * cos_i - indexOfRefraction_t * cos_t) / (indexOfRefraction_i * cos_i + indexOfRefraction_t * cos_t);
+	return 0.5f * (rp * rp + ro * ro);
+}
+
+// https://agraphicsguy.wordpress.com/2015/11/01/sampling-microfacet-brdf/
+// https://schuttejoe.github.io/post/ggximportancesamplingpart1/
+vec3 sampleDGGX(inout RNG rng, vec3 normal, float alpha, vec3 dir1, out float pDensity)
+{
+	if(dot(dir1, normal) < 0.0f)
+	{
+		
+		pDensity = 1.0f;
+		return -normal;
+	}
+	// theta_h ~ alpha*alpha * cos(theta_h) sin(theta_h) / (float(Pi) * (q * q)), q = (cos(theta_h) ^2 ) * (alpha * alpha - 1.0f) + 1.0f,	 q(0) = a^2, q(\pi/2) = 1
+	// F(\theta_h) = \int_0^{\theta_h} 1/C alpha*alpha * cos(\theta_h') / (float(Pi) * (q * q)) d\theta_h' =	[ 1/(Pi C) a^2 / ( 2	(a^2 - 1) q(\theta') )	]_0^\theta_h = 1/(Pi C) a^2 / ( 2	(a^2 - 1) q(\theta_h) ) - 1/(Pi C) a^2 / ( 2	(a^2 - 1) q(0) )
+	//						 = 1/(Pi C) a^2 / ( 2	(a^2 - 1) q(\theta_h) ) - 1/(Pi C	2	(a^2 - 1)	) = 1 / (Pi C 2	q(\theta_h) )	
+	// F(\pi/2) = 1 = 1 / (Pi C 2) => C =	1 / (pi 2	) 
+	// F(\theta_h) = 1 / q(\theta_h) = u = 1 / ((nh * nh) * (alpha * alpha - 1.0f) + 1.0f) , 1 = (nh * nh) * (alpha * alpha - 1.0f) u + u
+	//						(1 - u)/(u (alpha^2 - 1) ) = cos(\theta_h)^2
+	vec3 h;
+	do
+	{
+		float xi1 = uniform01f(rng);
+		float xi2 = uniform01f(rng);
+
+		float phi = 2.0f * float(Pi) * xi2;
+		float costheta = sqrt((1.0f - xi1) / (xi1 * (alpha * alpha - 1.0f) + 1.0f)); // using double here on purpose due to numerical problems
+		float sintheta = sqrt(1.0f - costheta * costheta);
+		float cosphi = cos(phi);
+		float sinphi = sin(phi); // you cannot use sqrt(1 - cosphi*cosphi) here you are gonna loose the sign
+		vec3 rv = vec3(sintheta * cosphi, sintheta * sinphi, costheta);
+
+		h = smallestRotationBetweenTwoVectors(vec3(0.0f, 0.0f, 1.0f), normal, rv);
+		h = normalize(h);
+	} while(dot(h, normal) <= 0.0f);
+
+	// p(dir2) = p( h	| dir1) / abs(det(jac_h(transformation)))
+	// dir2 =	2 * dot(h, dir1) * h - dir1
+	//	we can just use http://www.matrixcalculus.org/ for the jacobian, sth like: 2 *h * (h'* y) - y, giving	2 h y' + 2 h' y * Identity, determinant is 4 h' y, i guess
+	vec3 dir2 = reflectAcross(dir1, h);
+	dir2 = normalize(dir2);
+
+	float nh = dot(normal, h);
+	float q = (nh * nh) * (alpha * alpha - 1.0f) + 1.0f;
+	float pDensityH = alpha * alpha * nh / (float(Pi) * (q * q));
+	pDensity = pDensityH / abs(4.0f * dot(dir1, h));
+	return dir2;
+}
+float sampleDGGXDensity(vec3 normal, float alpha, vec3 dir1, vec3 dir2)
+{
+	vec3 h = normalize(dir1 + dir2); // this is not the "correct" h, the sign may be wrong wrt sampleDGGX, which is why we just use abs on the next line
+	float nh = abs(dot(normal, h));
+	float q = (nh * nh) * (alpha * alpha - 1.0f) + 1.0f;
+	float pDensityH = alpha * alpha * nh / (float(Pi) * (q * q));
+	return pDensityH / (1e-7f + abs(4.0f * dot(dir1, h)));
+}
+float DGGX(float nh, float alpha)
+{
+	float q = (nh * nh) * (alpha * alpha - 1.0f) + 1.0f;
+	float D = alpha * alpha / (1e-7f + float(Pi) * (q * q));
+	return D;
+}
+float SmithIsotropicGGXShadowing(float alpha, float vsq, float vn)
+{
+	float lambda = (sqrt(1.0f + alpha * alpha * (vsq / (vn * vn) - 1.0f)) - 1.0f) * 0.5f;
+	return 1.0f / (1.0f + lambda);
+}
 
 float DGGX(float nh, float th, float bh, float alpha_t, float alpha_b)
 {
 	float D = float(InvPi) / (alpha_t * alpha_b * square(square(th / alpha_t) + square(bh / alpha_b) + square(nh)));
 	return D;
 }
-
+// "glass ground unknown"
 float smithGGX(float nv, float tv, float bv, float alpha_t, float alpha_b)
 {
-	float lambda = 0.5f * ( sqrt(1.0f + (square(alpha_t * tv) + square(alpha_b * bv))/square(nv))	- 1.0f);
+	float lambda = 0.5f * (sqrt(1.0f + (square(alpha_t * tv) + square(alpha_b * bv)) / square(nv)) - 1.0f);
 	return 1.0f / (1.0f + lambda);
 }
 
@@ -345,7 +496,7 @@ vec3 sampleGGXVNDF(vec3 wOut, float alphaX, float alphaY, float xi1, float xi2)
 	vec3 X = vec3(1.0f, 0.0f, 0.0f);
 	vec3 Z = vec3(0.f, 0.f, 1.0f);
 	vec3 T1 = cross(Vh, Z);
-	if (normSq(T1) < 1e-12f) T1 = X;
+	if(normSq(T1) < 1e-12f) T1 = X;
 	else T1 = normalize(T1);
 	vec3 T2 = cross(T1, Vh);
 
@@ -362,7 +513,7 @@ vec3 sampleGGXVNDF(vec3 wOut, float alphaX, float alphaY, float xi1, float xi2)
 }
 vec3 sampleGGXVNDFGlobal(inout RNG rng, vec3 normal, float alpha_t, float alpha_b, vec3 tangent, vec3 bitangent, vec3 dir1, out float pDensity)
 {
-	if (dot(dir1, normal) <= 0.0f)
+	if(dot(dir1, normal) <= 0.0f)
 	{
 		
 		pDensity = 0.0f;
@@ -376,11 +527,11 @@ vec3 sampleGGXVNDFGlobal(inout RNG rng, vec3 normal, float alpha_t, float alpha_
 		vec3 Ne = sampleGGXVNDF(Ve, alpha_t, alpha_b, uniform01f(rng), uniform01f(rng));
 
 		NeGlobal = tangent * Ne[0] + bitangent * Ne[1] + normal * Ne[2];
-		NeGlobal = normalize(NeGlobal); // TODO move out of loop
-	} while (dot(NeGlobal, dir1) <= 0.0f);
+		NeGlobal = normalize(NeGlobal);
+	} while(dot(NeGlobal, dir1) <= 0.0f);
 
 	vec3 dir2 = reflectAcross(dir1, NeGlobal);
-	dir2 = normalize(dir2); //TODO remove?
+	dir2 = normalize(dir2);
 	// V = dir1, N = H
 	float G1 = smithGGX(dot(normal, dir1), dot(tangent, dir1), dot(bitangent, dir1), alpha_t, alpha_b);
 	float D_ggx = DGGX(dot(normal, NeGlobal), dot(tangent, NeGlobal), dot(bitangent, NeGlobal), alpha_t, alpha_b);
@@ -390,7 +541,7 @@ vec3 sampleGGXVNDFGlobal(inout RNG rng, vec3 normal, float alpha_t, float alpha_
 }
 float sampleGGXVNDFGlobalDensity(vec3 normal, float alpha_t, float alpha_b, vec3 tangent, vec3 bitangent, vec3 dir1, vec3 dir2)
 {
-	if (dot(dir1, normal) <= 0.0f)
+	if(dot(dir1, normal) <= 0.0f)
 	{
 		
 		return 0.0f;
@@ -401,15 +552,20 @@ float sampleGGXVNDFGlobalDensity(vec3 normal, float alpha_t, float alpha_b, vec3
 	float pDensityH = G1 * max(0.0f, dot(dir1, NeGlobal)) * D_ggx / dot(dir1, normal);
 	return pDensityH / (1e-7f + 4.0f * abs(dot(dir1, NeGlobal)));
 }
-float signSide(float dotNW) {
+
+
+float signSide(float dotNW)
+{
 	return dotNW < 0.0f ? -1.0f : 1.0f;
 }
 
-bool sideOutside(float dotNW) {
+bool sideOutside(float dotNW)
+{
 	return dotNW >= 0.0f;
 }
 
-float computeNormalScale(vec3 wi, vec3 normalShading, vec3 normalGeometric) {
+float computeNormalScale(vec3 wi, vec3 normalShading, vec3 normalGeometric)
+{
 	return abs(dot(wi, normalShading)) / (1e-7f + abs(dot(wi, normalGeometric)));
 }
 
@@ -417,9 +573,12 @@ vec3 PrincipledBRDFgetShadingNormal(SurfaceInteraction interaction, vec3 wo, flo
 {
 	float sideNgWo = signSide(dotNgWo);
 	vec3 normalShading;
-		normalShading = interaction.normalShadingDefault;
+	// first we make sure we have a normal that points in the same direction wrt wo
+	
+	normalShading = interaction.normalShadingDefault;
+		
 	float sideNsWo = signSide(dot(normalShading, wo));
-	if (sideNgWo != sideNsWo)
+	if(sideNgWo != sideNsWo)
 	{
 		normalShading = interaction.normalGeometric; // this is not consistent but good enough for the hack called normal map
 	}
@@ -428,11 +587,53 @@ vec3 PrincipledBRDFgetShadingNormal(SurfaceInteraction interaction, vec3 wo, flo
 	normalShading *= sideNgWo;
 	return normalShading;
 }
-
-void PrincipledBRDFcomputeProbability(float metallicHit, float specularHit, out float diffSpecMix, out float pProbablitySpec)
+float PrincipledBRDFcomputeAlpha(float roughness)
 {
-	diffSpecMix = min(1.0f - metallicHit, 1.0f - 0.5f * specularHit); // we want this to be zero when metallic and one when specular = 0
-	pProbablitySpec = 1.0f - diffSpecMix;
+	//we have alpha min to not have dirac distribution as special case
+	float alpha = roughness * roughness;
+	if(alpha < 1e-2f && alpha != 0.0f) // we handle alpha == 0.0f specifically
+	{
+		//
+		alpha = 1e-2f;
+	}
+	return alpha;
+}
+PrincipledBRDFProbabilityResult PrincipledBRDFcomputeProbability(float metallicHit, float specularHit, float transmissionHit, float cos_o, float indexOfRefraction_o, float indexOfRefraction_refr_o)
+{
+	//assert(cos_o >= 0.0f);
+	PrincipledBRDFProbabilityResult result;
+	result.refractionPossible = computeRefractionCosT(cos_o, indexOfRefraction_o, indexOfRefraction_refr_o, result.cosT);
+	if(result.refractionPossible)
+	{
+		result.FDaccurate = fresnelDielectric(cos_o, result.cosT, indexOfRefraction_o, indexOfRefraction_refr_o); // goes from 0 to 1 for cos_i going from 0 to 90 degrees, at higher degrees we get more reflection
+	}
+	else
+	{
+		result.FDaccurate = 1.0f;
+	}
+
+	float mDiffuseStrategy = (1.0f - transmissionHit) * (1.0f - metallicHit) * (1.0f - 0.5f * specularHit); // we want this to be zero when metallic and one when specular = 0
+	float sTransmission = result.FDaccurate;
+	float sMetallic = 1.0f;
+	float mSpecularStrategy = mix(mix(0.5f * specularHit, sTransmission, transmissionHit), sMetallic, metallicHit);
+	float mRefractiveStrategy = (1.0 - result.FDaccurate) * transmissionHit * (1.0 - metallicHit);
+
+	float mSum = mDiffuseStrategy + mSpecularStrategy + mRefractiveStrategy;
+	result.noStrategy = mSum == 0.0f;
+	if(result.noStrategy)
+	{
+		result.pDiffuseStrategy = 0.0f;
+		result.pSpecularStrategy = 0.0f;
+		result.pRefractiveStrategy = 0.0f;
+	}
+	else
+	{
+		result.pDiffuseStrategy = mDiffuseStrategy / mSum;
+		result.pSpecularStrategy = mSpecularStrategy / mSum;
+		result.pRefractiveStrategy = mRefractiveStrategy / mSum;
+	}
+
+	return result;
 }
 void PrincipledBRDFcomputeAnisotropyParameters(SurfaceInteraction interaction, vec3 normalShading, float alpha, float anisotropyHit, out float alpha_t, out float alpha_b, out vec3 tangent, out vec3 bitangent)
 {
@@ -443,54 +644,98 @@ void PrincipledBRDFcomputeAnisotropyParameters(SurfaceInteraction interaction, v
 	bitangent = smallestRotationBetweenTwoVectors(interaction.normalGeometric, normalShading, interaction.bitangent);
 }
 
-vec3 PrincipledBRDFevaluateDiffuse(
-	vec3 albedoHit, float diffuseSpecMix){
-	return albedoHit * float(InvPi) * diffuseSpecMix;
+// Goal : mix(mix(DielectricBRDF, GlassBRDF,	transmission), metallicBRDF, metallic)
+//	 where DielectricBRDF, GlassBRDF and metallicBRDF is a fully working BRDF, and the grouping like this is cause glass is a dielectric...
+// but this can be simplified because we use a simpler model where the specular lobe of the metallic, the dielectric and the "glass"
+// mix(mix(DielectricBRDFDiffuse, GlassBRDFDiffuse,	transmission), metallicBRDFDiffuse, metallic)
+//	= mix(mix(DielectricBRDFDiffuse, 0,	transmission), 0, metallic)
+//	= DielectricBRDFDiffuse * (1.0 - transmission) * (1.0 - metallic)
+//	= Lambertian * (1.0f - 0.5f * specularHit) * (1.0 - transmissionHit) * (1.0 - metallicHit)
+
+
+// this function assumes that dot(Ns, wo) >= 0
+vec3 PrincipledBRDFevaluateDiffuse(float dotNsWi, vec3 albedoHit, float normalScale, float metallicHit, float specularHit, float transmissionHit)
+{
+	if(dotNsWi < 0.0f) return vec3(0.0);
+	
+	return albedoHit * (float(InvPi) * normalScale * (1.0f - 0.5f * specularHit) * (1.0 - transmissionHit) * (1.0 - metallicHit));
 }
-vec3 PrincipledBRDFevaluateSpecular(
+// this function assumes that dot(Ns, wo) >= 0
+vec3 PrincipledBRDFevaluateConcentratedWithoutTransmission(
+	float dotNsWi, 
 	vec3 albedoHit, float metallicHit, float specularHit,
-	float roughnessHit, float anisotropyHit,
+	float roughnessHit, float anisotropyHit, float transmissionHit,
 	vec3 wo, vec3 wi,
 	float alpha,
 	float alpha_t, float alpha_b,
 	vec3 tangent, vec3 bitangent,
-	vec3 normalShading, float diffuseSpecMix){
+	vec3 normalShading,
+	float normalScale,
+	bool forceHitSpecular,
+	vec3 FDaccurate)
+{
+	if(dotNsWi < 0.0f) return vec3(0.0);
 	
 	vec3 h = normalize(wo + wi);
 	float lh = abs(dot(wi, h));
-	vec3 Ks = vec3(1.0);
-	vec3 F0 = mix(Ks, albedoHit, metallicHit);
+					 
+										   
 
-	vec3 FH = F0 + (vec3(1.0) - F0) * pow(1.0f - lh, 5.0);
+	//Pseudo fresnel:
+	// https://www.youtube.com/watch?v=kEcDbl7eS0w basically F0 is directly the color one desires in the middle, and it's actually more principled to use F0 + SChlick than using the full fresnel equations because we don't do proper spectral rendering
+	float cosNih5 = pow(1.0f - lh, 5.0f);
+	// FH * D * G / (4 * nv * nl) with:
+	//vec3 F0 = mix(vec3(1.0), albedoHit, metallicHit); // and we also have a specular part for non metalics, in that case it's kinda white, wheras for a metallic object the light gets "colored"
+	//vec3 FH = F0 + (vec3(1.0) - F0) * cosNih5; // here if we are at a grazing angle, we	remove some F0, and add some "achromatic" reflectance (vec3ones)
+	//vec3 FH = F0 + vec3(1.0) * cosNih5 - F0 * cosNih5;
+	//vec3 FH = mix(vec3(1.0), albedoHit, metallicHit) * (1.0f - cosNih5) + vec3(1.0) * cosNih5;
+	//vec3 FH = mix(vec3(1.0) * (1.0f - cosNih5), albedoHit * (1.0f - cosi5), metallicHit) + vec3(1.0) * cosNih5;
+	//vec3 FH = mix(vec3(1.0) * (1.0f - cosNih5) + vec3(1.0) * cosNih5, albedoHit * (1.0f - cosNih5) + vec3(1.0) * cosi5, metallicHit);
+	//vec3 FH = mix(vec3(1.0), albedoHit * (1.0f - cosNih5) + vec3(1.0) * cosNih5, metallicHit);
 
 	float nh = dot(normalShading, h);
-	
+
 	float nv = abs(dot(normalShading, wo));
 	float nl = abs(dot(normalShading, wi));
 	float Go = smithGGX(nv, dot(tangent, wo), dot(bitangent, wo), alpha_t, alpha_b);
 	float Gi = smithGGX(nl, dot(tangent, wi), dot(bitangent, wi), alpha_t, alpha_b);
 	float G = Go * Gi;
-	
+
 	float D_ggx;
 
-	if (alpha == 0.0f)
+	if(alpha == 0.0f)
 	{
 		// D_GGX explodes for alpha= 0 and nh = 1
 		// we can find this by using importance sample formula and then let alpha go to zero?, G is always 1 in that case
 		// => \int F D G/ (4 nv nl) dl ~= 1/N \sum_i	F D Gi Go/ (4 nv nl_i	p(l_i) )
 		//					 ~= 1/N \sum_i	F / nv ~=	 F / nv for alpha = 0
-		D_ggx = abs(abs(nh) - 1.0f) < 1e-3f ? 4.0f * nl : 0.0f;
+		D_ggx = forceHitSpecular ? 4.0f * nl : 0.0f; // or 4.0f * nv? nv and nl should be the same for a fully reflective hit
 	}
 	else
 	{
 		D_ggx = DGGX(nh, dot(tangent, h), dot(bitangent, h), alpha_t, alpha_b);
 	}
 
-	vec3 result = FH * (D_ggx * G / abs(1e-7f + 4.0f * nv * nl) * (1.0f - diffuseSpecMix));
+	float sDielectric = 0.5f * specularHit;
+	vec3 sTransmission = vec3(0.0);
+	vec3 sMetallic = albedoHit * (1.0f - cosNih5) + vec3(1.0) * cosNih5;
+
+	vec3 resultTransmission = vec3(0.0);
+	if(transmissionHit > 0.0f)
+	{
+		//if(alpha != 0.0f) throw runtime_error("not implemented");
+		sTransmission = forceHitSpecular ? FDaccurate : vec3(0.0);
+		//resultTransmission = forceHitRefraction ? (vec3(1.0) - FDaccurate) * scale * transmissionHit * (1.0 - metallicHit) * normalScale / (1e-7f + nl) : vec3(0.0); // normal scale is nl / dotNgeometricWi , and result f is multiplied with dotNgeometricWi
+	}
+	vec3 resultSpecular = mix(mix(vec3(sDielectric), sTransmission, transmissionHit), sMetallic, metallicHit) * (D_ggx * G * normalScale / abs(1e-7f + 4.0f * nv * nl));
+	vec3 result = resultSpecular + resultTransmission;
 	return result;
 }
 
-SampleResult PrincipledBRDFsample(inout RNG rng, SurfaceInteraction interaction, vec3 wo)
+								  
+SampleResult PrincipledBRDFsample(inout RNG rng, SurfaceInteraction interaction, vec3 albedoHit,
+						float metallicHit, float specularHit, float roughnessHit, float anisotropyHit, float transmissionHit,
+						vec3 wo, float outsideIOR)
 {
 	SampleResult result;
 
@@ -500,35 +745,20 @@ SampleResult PrincipledBRDFsample(inout RNG rng, SurfaceInteraction interaction,
 	vec3 normalShading = PrincipledBRDFgetShadingNormal(interaction, wo, dotNgWo);
 	float dotNsWo = dot(normalShading, wo);
 
-	vec3 albedoHit = albedo->evaluate(interaction);
-	float roughnessHit = roughness->evaluate(interaction);
-	float alpha = computeAlpha(roughnessHit);
-	float metallicHit = metallic->evaluate(interaction);
-	float specularHit = this->specular;
-	float anisotropyHit = this->anisotropy;
-	float transmissionHit = transmission;
-
-	float indexOfRefractionOutside = getOutsideIOR();
-	float indexOfRefractionMat;
-	int wavelength;
-	if (varyIOR)
-	{
-		wavelength = result.lightRay.getWavelength(rng, abs(albedoHit));
-		indexOfRefractionMat = getIndexOfRefraction(wavelength);
-	}
-	else
-	{
-		wavelength = -1;
-		indexOfRefractionMat = getIndexOfRefraction(0);
-	}
+	float alpha = PrincipledBRDFcomputeAlpha(roughnessHit);
+	
+	float indexOfRefractionOutside = outsideIOR;
+	float indexOfRefractionMat = 1.45f;
+	int wavelength = -1;
 
 	result.outside = sideOutside(dotNgWo);
 	float indexOfRefraction_o = result.outside ? indexOfRefractionOutside : indexOfRefractionMat;
 	float indexOfRefraction_refr_o = result.outside ? indexOfRefractionMat : indexOfRefractionOutside;
-	
-	ProbabilityResult probabilityResult = computeProbability(metallicHit, specularHit, transmission, dotNsWo, indexOfRefraction_o, indexOfRefraction_refr_o, evalFlag);
 
-	if (probabilityResult.noStrategy) {
+	PrincipledBRDFProbabilityResult probabilityResult = PrincipledBRDFcomputeProbability(metallicHit, specularHit, transmissionHit, dotNsWo, indexOfRefraction_o, indexOfRefraction_refr_o);
+
+	if(probabilityResult.noStrategy)
+	{
 		result.direction = vec3(1.0f, 0.0f, 0.0f);
 		result.throughputDiffuse = vec3(0.0);
 		result.throughputConcentrated = vec3(0.0);
@@ -537,16 +767,20 @@ SampleResult PrincipledBRDFsample(inout RNG rng, SurfaceInteraction interaction,
 	}
 
 	// we just put the same Fresnel term in for all wavelengths and then mask the output:
-	vec3 FDaccurateVector = vec3Fill(probabilityResult.FDaccurate);
+	vec3 FDaccurateVector = vec3(probabilityResult.FDaccurate);
 	vec3 wavelengthMask = vec3(1.0);
-	if (wavelength != -1) {
+	if(wavelength != -1)
+	{
+						
 		wavelengthMask = vec3(0.0);
 		wavelengthMask[wavelength] = 1.0f;
+																															 
+				
 	}
 
 	float alpha_t, alpha_b;
 	vec3 tangent, bitangent;
-	computeAnisotropyParameters(interaction, normalShading, alpha, alpha_t, alpha_b, tangent, bitangent);
+	PrincipledBRDFcomputeAnisotropyParameters(interaction, normalShading, alpha, anisotropyHit, alpha_t, alpha_b, tangent, bitangent);
 
 	// pSpecStr = proability to sample using Specular Strategy
 	// p_diff = probability density of diffuse sampling scheme
@@ -560,7 +794,7 @@ SampleResult PrincipledBRDFsample(inout RNG rng, SurfaceInteraction interaction,
 	//E[F'] = pSpecStr \int f L cos(omega) / (pSpecStr p_spec(omega) + (1 - pSpecStr) p_diff(omega))	p_spec(omega) domega + (1 - pSpecStr) \int f L cos(omega) / (pSpecStr p_spec(omega) + (1 - pSpecStr) p_diff(omega)) p_diff(omega) domega
 	//			 = \int f L cos(omega)	(pSpecStr	p_spec(omega) + (1 - pSpecStr)p_diff(omega)) / (pSpecStr p_spec(omega) + (1 - pSpecStr) p_diff(omega))) domega
 	//			 = \int f L cos(omega) domega = E[F]
-	
+
 	MaterialEvalResult evalResult = MaterialEvalResult(vec3(0.0), vec3(0.0), normalShading);
 
 	// using defines here instead of enums to support glsl
@@ -569,11 +803,13 @@ SampleResult PrincipledBRDFsample(inout RNG rng, SurfaceInteraction interaction,
 #define PBRDF_STRATEGY_REFRACTIVE 3u
 
 	float xi = uniform01f(rng); // xi \in [0, 1)
-	uint32_t strategy = xi < probabilityResult.pRefractiveStrategy ? PBRDF_STRATEGY_REFRACTIVE : ( xi < (probabilityResult.pRefractiveStrategy + probabilityResult.pSpecularStrategy) ? PBRDF_STRATEGY_SPECULAR : PBRDF_STRATEGY_DIFFUSE);
-	if (strategy == PBRDF_STRATEGY_SPECULAR)
+	uint strategy = xi < probabilityResult.pRefractiveStrategy ? PBRDF_STRATEGY_REFRACTIVE : (xi < (probabilityResult.pRefractiveStrategy + probabilityResult.pSpecularStrategy) ? PBRDF_STRATEGY_SPECULAR : PBRDF_STRATEGY_DIFFUSE);
+	
+	if(strategy == PBRDF_STRATEGY_SPECULAR)
+						 
 	{
 
-		if (alpha == 0.0f) // delta distribution; need to keep wierd fake measure
+		if(alpha == 0.0f) // delta distribution; need to keep wierd fake measure
 		{
 			//F' = {
 			//			(f_specular L cos(omegaSpec)) / pSpecStr, omega = omegaSpec		 xi < pSpecStr
@@ -586,79 +822,89 @@ SampleResult PrincipledBRDFsample(inout RNG rng, SurfaceInteraction interaction,
 			result.direction = reflectAcross(wo, normalShading);
 			result.pdfOmega = 1e12f; // this is the probability for MIS , we could also tell it directly that it's a dirac delta but this should work to working precision
 			vec3 wi = result.direction;
+			float dotNsWi = dot(normalShading, wi);
 			float normalScale = computeNormalScale(wi, normalShading, interaction.normalGeometric);
 			evalResult.fDiffuse = vec3(0.0);
-			evalResult.fConcentrated = 1e12f / probabilityResult.pSpecularStrategy * PrincipledBRDFevaluateConcentrated(
+			evalResult.fConcentrated = 1e12f / probabilityResult.pSpecularStrategy * PrincipledBRDFevaluateConcentratedWithoutTransmission(
+				dotNsWi, 
 				albedoHit, metallicHit, specularHit,
-				roughnessHit, anisotropyHit, transmission,
+				roughnessHit, anisotropyHit, transmissionHit,
 				wo, result.direction,
 				alpha,
 				alpha_t, alpha_b,
 				tangent, bitangent,
-				normalShading, normalScale, true, false, FDaccurateVector);
+				normalShading, normalScale, true, FDaccurateVector);
 		}
 		else
 		{
 			float pdfSpec;
-			result.direction = sampleGGXVNDFGlobal(rng, normalShading, alpha_t, alpha_b, tangent, bitangent, wo, &pdfSpec);
+			result.direction = sampleGGXVNDFGlobal(rng, normalShading, alpha_t, alpha_b, tangent, bitangent, wo, pdfSpec);
 			float pdfDiffuse = evaluateHemisphereCosImportancePDF(normalShading, result.direction);
 
 			result.pdfOmega = probabilityResult.pSpecularStrategy * pdfSpec + probabilityResult.pDiffuseStrategy * pdfDiffuse;
 			vec3 wi = result.direction;
+			float dotNsWi = dot(normalShading, wi);
 			float normalScale = computeNormalScale(wi, normalShading, interaction.normalGeometric);
-			evalResult.fDiffuse = PrincipledBRDFevaluateDiffuse(albedoHit, normalScale, metallicHit, specularHit, transmission);
-			evalResult.fConcentrated = PrincipledBRDFevaluateConcentrated(
+			evalResult.fDiffuse = PrincipledBRDFevaluateDiffuse(dotNsWi, albedoHit, normalScale, metallicHit, specularHit, transmissionHit);
+			evalResult.fConcentrated = PrincipledBRDFevaluateConcentratedWithoutTransmission(
+				dotNsWi, 
 				albedoHit, metallicHit, specularHit,
-				roughnessHit, anisotropyHit, transmission,
+				roughnessHit, anisotropyHit, transmissionHit,
 				wo, result.direction,
 				alpha,
 				alpha_t, alpha_b,
 				tangent, bitangent,
-				normalShading, normalScale, false, false, FDaccurateVector);
+				normalShading, normalScale, false, FDaccurateVector);
 		}
 	}
 	else if(strategy == PBRDF_STRATEGY_DIFFUSE)
 	{
 		float pdfDiffuse;
-		result.direction = sampleHemisphereCosImportance(rng, normalShading, &pdfDiffuse);
+		result.direction = sampleHemisphereCosImportance(rng, normalShading, pdfDiffuse);
 		vec3 wi = result.direction;
+		float dotNsWi = dot(normalShading, wi);
 		float normalScale = computeNormalScale(wi, normalShading, interaction.normalGeometric);
 
-		if (alpha == 0.0f) // delta distribution; need to keep wierd fake measure
+		if(alpha == 0.0f) // delta distribution; need to keep wierd fake measure
 		{
 			result.pdfOmega = probabilityResult.pDiffuseStrategy * pdfDiffuse;
-			evalResult.fDiffuse = PrincipledBRDFevaluateDiffuse(albedoHit, normalScale, metallicHit, specularHit, transmission);
+			evalResult.fDiffuse = PrincipledBRDFevaluateDiffuse(dotNsWi, albedoHit, normalScale, metallicHit, specularHit, transmissionHit);
 			evalResult.fConcentrated = vec3(0.0);
 		}
 		else
 		{
 			float pdfSpec = sampleGGXVNDFGlobalDensity(normalShading, alpha_t, alpha_b, tangent, bitangent, wo, result.direction);
 			result.pdfOmega = probabilityResult.pSpecularStrategy * pdfSpec + (1.0f - probabilityResult.pSpecularStrategy) * pdfDiffuse;
-			evalResult.fDiffuse = PrincipledBRDFevaluateDiffuse(albedoHit, normalScale, metallicHit, specularHit, transmission);
-			evalResult.fConcentrated = PrincipledBRDFevaluateConcentrated(
+			evalResult.fDiffuse = PrincipledBRDFevaluateDiffuse(dotNsWi, albedoHit, normalScale, metallicHit, specularHit, transmissionHit);
+			evalResult.fConcentrated = PrincipledBRDFevaluateConcentratedWithoutTransmission(
+				dotNsWi, 
 				albedoHit, metallicHit, specularHit,
-				roughnessHit, anisotropyHit, transmission,
+				roughnessHit, anisotropyHit, transmissionHit,
 				wo, result.direction,
 				alpha,
 				alpha_t, alpha_b,
 				tangent, bitangent,
-				normalShading, normalScale, false, false, FDaccurateVector);
+				normalShading, normalScale, false, FDaccurateVector);
 		}
 	}
-	else {
+	else
+	{
 		// refraction: switch outside
 		result.outside = !result.outside;
 		result.pdfOmega = 1e12f;
 		evalResult.fDiffuse = vec3(0.0);
-		if (!probabilityResult.refractionPossible) {
+		if(!probabilityResult.refractionPossible)
+		{
 			evalResult.fConcentrated = vec3(0.0);
 			result.direction = vec3(1.0f, 0.0f, 0.0f);
 		}
-		else {
-			vec3 wi = computeRefractionDirectionFromAngles(wo, normalShading, indexOfRefraction_o / indexOfRefraction_refr_o, dotNsWo, probabilityResult.cosT);
+		else
+		{
+			float iorO_over_iorRo = indexOfRefraction_o / indexOfRefraction_refr_o;
+			vec3 wi = computeRefractionDirectionFromAngles(wo, normalShading, iorO_over_iorRo, dotNsWo, probabilityResult.cosT);
 			result.direction = wi;
-			float scale = adjoint ? 1.0f : square(indexOfRefraction_o) / square(indexOfRefraction_refr_o); // See "Non-symmetric Scattering in Light Transport Algorithms" the eq. after eq. 10
-			float fc = 1e12f / probabilityResult.pRefractiveStrategy * scale * (1.0f - probabilityResult.FDaccurate) / abs(dot(result.direction, interaction.normalGeometric));
+			float scale = square(iorO_over_iorRo); // See "Non-symmetric Scattering in Light Transport Algorithms" the eq. after eq. 10
+			float fc = result.pdfOmega / probabilityResult.pRefractiveStrategy * scale * (1.0f - probabilityResult.FDaccurate) / abs(dot(result.direction, interaction.normalGeometric));
 			evalResult.fConcentrated = fc * wavelengthMask;
 		}
 	}
@@ -673,6 +919,8 @@ SampleResult PrincipledBRDFsample(inout RNG rng, SurfaceInteraction interaction,
 	//assertFinite(result.pdfOmega);
 	return result;
 }
+
+
 
 void main()
 {
@@ -748,17 +996,19 @@ void main()
 					const float specularHit = material.specular;
 					const float anisotropyHit = 0.0;
 					const float outsideIOR = 1.0;
+					const float transmissionHit = material.transmission;
+					//if(transmissionHit > 0.0f) {colorSample = vec3(1.0f, 0.0f, 0.0f); break;}
 					
 					SampleResult sampleResult = PrincipledBRDFsample(
 						rng, surfaceInteraction, albedoHit,
-						metallicHit, specularHit, roughnessHit, anisotropyHit,
+						metallicHit, specularHit, roughnessHit, anisotropyHit, transmissionHit,
 						wo, outsideIOR);
 					
-					vec3 throughputHit = sampleResult.throughputDiffuse + sampleResult.throughputSpecular;
+					vec3 throughputHit = sampleResult.throughputDiffuse + sampleResult.throughputConcentrated;
 					
 					throughput *= throughputHit;
 					
-					rayOrigin = surfaceInteraction.x + 1e-4 * surfaceInteraction.normalGeometric;
+					rayOrigin = surfaceInteraction.x + (sampleResult.outside ? 1e-4 : -1e-4) * surfaceInteraction.normalGeometric;
 					rayDirection = sampleResult.direction;
 				} else {
 					break;
