@@ -90,7 +90,7 @@ public:
   }
   void addPhoton(const Ray& ray, const RayHit& hit, const Vec3f& flux)
   {
-    photons.emplace_back(ray, hit.interaction.normalGeometric.dot(hit.wFrom()), hit.interaction.x, flux);
+    photons.emplace_back(ray, dot(hit.interaction.normalGeometric, hit.wFrom()), hit.interaction.x, flux);
     points.push_back(hit.interaction.x);
   }
 
@@ -190,7 +190,7 @@ private:
 
 void tracePhoton(RenderContext context, PhotonMap& photonMap, const Ray& a_ray, const Vec3f& a_flux, bool causticsMap)
 {
-  if (!a_flux.isFinite())
+  if (!isFinite(a_flux))
   {
     std::cout << " warning INPUT flux is not finite " << std::endl;
   }
@@ -202,14 +202,14 @@ void tracePhoton(RenderContext context, PhotonMap& photonMap, const Ray& a_ray, 
   context.scene.rayHit(ray, &rayhit);
   if (!hasHitSurface(rayhit)) return;
 
-  Vec3f transmittance = beersLaw(lightRay.getTransmittance(), (rayhit.interaction.x - ray.origin()).norm());
-  flux = flux.cwiseProd(transmittance);
+  Vec3f transmittance = beersLaw(lightRay.getTransmittance(), norm(rayhit.interaction.x - ray.origin()) );
+  flux = cwiseProd(flux, transmittance);
 
   bool storeOnSpecular = false;
 
   for (int depth = 0; depth < context.renderSettings.maxDepth; depth++)
   {
-    if (!flux.isFinite())
+    if (!isFinite(flux))
     {
       std::cout << " warning flux is not finite " << std::endl;
       break;
@@ -228,7 +228,7 @@ void tracePhoton(RenderContext context, PhotonMap& photonMap, const Ray& a_ray, 
     SampleResult sampleResult;
     if (causticsMap)
     {
-      sampleResult = context.scene.sampleBRDFSpecular(context, lightRay, rayhit, adjoint);
+      sampleResult = context.scene.sampleBRDFConcentrated(context, lightRay, rayhit, adjoint);
     }
     else
     {
@@ -247,18 +247,18 @@ void tracePhoton(RenderContext context, PhotonMap& photonMap, const Ray& a_ray, 
 
     //beer's law; moving from hit.x to hit2.x;
     lightRay.updateMedia(context, rayhit, sampleResult.direction);
-    Vec3f transmittance = beersLaw(lightRay.getTransmittance(), (rayhit2.interaction.x - ray2.origin()).norm());
-    throughputThis = throughputThis.cwiseProd(transmittance);
+    Vec3f transmittance = beersLaw(lightRay.getTransmittance(), norm(rayhit2.interaction.x - ray2.origin()) );
+    throughputThis = cwiseProd(throughputThis, transmittance);
 
     // should we absorb photon:
     float minQ = 1.0f - std::pow(0.1f, 1.0f / context.renderSettings.maxDepth); // probability roulette after maxdepth, 1.0 - p(r0 | r1 | r2 ..) = 1.0 - p(r_i)^80 = 1.0 - pr^80 = 0.9 , pr^80 =  0.1
-    float rouletteQ = std::max(minQ, 1.0f - throughputThis.norm()); // trying to keep the flux the same....  
+    float rouletteQ = std::max(minQ, 1.0f - norm(throughputThis)); // trying to keep the flux the same....  
     if (uniform01f(context.rng) <= rouletteQ)
     {
       break;
     }
 
-    flux = flux.cwiseProd(throughputThis) / (1.0f - rouletteQ);
+    flux = cwiseProd(flux, throughputThis) / (1.0f - rouletteQ);
     assertFinite(flux);
 
     rayhit = rayhit2;
@@ -287,10 +287,10 @@ PhotonFluxEstimate photonMapFluxEstimate(RenderContext context, PhotonMap &map, 
     const Photon& photon = photons[i];
     MaterialEvalResult evalResult = context.scene.evaluteBRDF(rayhit, rayhit.wFrom(), photon.wi, 1.0f, adjoint, ShaderEvalFlag::DIFFUSE);
     assertFinite(evalResult.fDiffuse);
-    assertFinite(evalResult.fSpecular);
+    assertFinite(evalResult.fConcentrated);
     assertFinite(photon.flux);
-    float fluxCorrection = std::abs(photon.wi.dot(rayhit.interaction.normalGeometric)) / (1e-7f + std::abs(photon.ngwi));
-    result.fluxEstimate += (photon.flux * fluxCorrection).cwiseProd(evalResult.fDiffuse + evalResult.fSpecular);
+    float fluxCorrection = std::abs(dot(photon.wi, rayhit.interaction.normalGeometric)) / (1e-7f + std::abs(photon.ngwi));
+    result.fluxEstimate += cwiseProd(photon.flux * fluxCorrection, evalResult.fDiffuse + evalResult.fConcentrated);
   }
   result.M = photons.size();
   return result;
@@ -312,7 +312,7 @@ GatherPhotonsResult gatherPhotons(RenderContext context, PhotonMap& photonMap, c
     Vec3f transmittance = beersLaw(lightRay.getTransmittance(), 1e6f);
     
     Vec3f Le = context.scene.evalEnvironment(a_ray);
-    result.L = transmittance.cwiseProd(Le);
+    result.L = cwiseProd(transmittance, Le);
     a_normal = Vec3f::Zero();
     albedo = result.L;
     return result;
@@ -330,8 +330,8 @@ GatherPhotonsResult gatherPhotons(RenderContext context, PhotonMap& photonMap, c
   for (int depth = 0; depth < 80; depth++)
   {
     //beer's law; moving from hit.x to hit2.x;
-    Vec3f transmittance = beersLaw(lightRay.getTransmittance(), (rayhit.interaction.x - ray.origin()).norm());
-    throughput = throughput.cwiseProd(transmittance);
+    Vec3f transmittance = beersLaw(lightRay.getTransmittance(), norm(rayhit.interaction.x - ray.origin()));
+    throughput = cwiseProd(throughput, transmittance);
 
     float rouletteQ = 0.0f;
     if (depth >= context.renderSettings.roulleteStartDepth) rouletteQ = context.renderSettings.rouletteQ;
@@ -343,7 +343,7 @@ GatherPhotonsResult gatherPhotons(RenderContext context, PhotonMap& photonMap, c
     }
     throughput /= (1.0f - rouletteQ);
 
-    result.L += throughput.cwiseProd(context.scene.getEmissionRadiance(rayhit.wFrom(), rayhit));
+    result.L += cwiseProd(throughput, context.scene.getEmissionRadiance(rayhit.wFrom(), rayhit));
 
     bool doADiffuseBounce = false;
     bool adjoint = false;
@@ -354,13 +354,13 @@ GatherPhotonsResult gatherPhotons(RenderContext context, PhotonMap& photonMap, c
     }
     else
     {
-      sampleResult = context.scene.sampleBRDFSpecular(context, lightRay, rayhit, adjoint);
+      sampleResult = context.scene.sampleBRDFConcentrated(context, lightRay, rayhit, adjoint);
 
       if (context.scene.hasBRDFDiffuseLobe(rayhit))
       {
         PhotonFluxEstimate estimate = photonMapFluxEstimate(context, photonMap, photons, ray, rayhit, radius);
         result.M += estimate.M;
-        result.photonFlux += throughput.cwiseProd(estimate.fluxEstimate);
+        result.photonFlux += cwiseProd(throughput, estimate.fluxEstimate);
       }
     }
     Vec3f throughputThis = sampleResult.throughput();
@@ -368,7 +368,7 @@ GatherPhotonsResult gatherPhotons(RenderContext context, PhotonMap& photonMap, c
 
     lightRay.applyWavelength(throughput);
 
-    throughput = throughput.cwiseProd(throughputThis);
+    throughput = cwiseProd(throughput, throughputThis);
     if (throughput == Vec3f::Zero()) break;
 
     Ray ray2 = context.scene.constructRay(rayhit.interaction, sampleResult.direction, sampleResult.outside);
@@ -382,7 +382,7 @@ GatherPhotonsResult gatherPhotons(RenderContext context, PhotonMap& photonMap, c
     if (!hasHitSurface(rayhit2))
     {
       Vec3f Le = context.scene.evalEnvironment(ray2);
-      result.L += throughput.cwiseProd(Le);
+      result.L += cwiseProd(throughput, Le);
       break;
     }
 
@@ -424,11 +424,11 @@ PathTraceWithCausticsMapResult pathTraceWithCausticsMap(RenderContext context, P
       albedo = context.scene.getAlbedo(rayhit.interaction);
     }
 
-    Vec3f throughput = beersLaw(lightRay.getTransmittance(), (rayhit.interaction.x - ray.origin()).norm());
+    Vec3f throughput = beersLaw(lightRay.getTransmittance(), norm(rayhit.interaction.x - ray.origin()));
     
     if (context.scene.isSurfaceLight(rayhit))
     {
-      result.LLight += throughput.cwiseProd(context.scene.getEmissionRadiance(-ray.direction(), rayhit));
+      result.LLight += cwiseProd(throughput, context.scene.getEmissionRadiance(-ray.direction(), rayhit));
       return result;
     }
 
@@ -436,7 +436,7 @@ PathTraceWithCausticsMapResult pathTraceWithCausticsMap(RenderContext context, P
     {
       PhotonFluxEstimate estimate = photonMapFluxEstimate(context, photonMap, photons, ray, rayhit, radius);
       result.M += estimate.M;
-      result.photonFlux += throughput.cwiseProd(estimate.fluxEstimate);
+      result.photonFlux += cwiseProd(throughput, estimate.fluxEstimate);
     }
 
     constexpr int beta = 2;
@@ -468,7 +468,7 @@ PathTraceWithCausticsMapResult pathTraceWithCausticsMap(RenderContext context, P
 
       for (int j = 0; j < numStrategies; j++)
       {
-        if (j != strategy) pdfs[j] = strategies.evalPDF(context, rayhit, -ray.direction(), j, sampleResult.ray, sampleResult.rayhit);
+        if (j != strategy) pdfs[j] = strategies.evalPDF(context, rayhit, sampleResult.lightRay , -ray.direction(), j, sampleResult.ray, sampleResult.rayhit);
       }
       float msiWeight = computeMsiWeightPowerHeuristic<beta>(strategy, pdfs);
       
@@ -476,20 +476,20 @@ PathTraceWithCausticsMapResult pathTraceWithCausticsMap(RenderContext context, P
       
       assertFinite(throughput);
       assertFinite(sampleResult.throughputDiffuse);
-      assertFinite(sampleResult.throughputSpecular);
-      Vec3f throughputDiffuseT = throughput.cwiseProd(sampleResult.throughputDiffuse.cwiseProd(throughputWavelength) * msiWeight);
-      Vec3f throughputSpecularT = throughput.cwiseProd(sampleResult.throughputSpecular.cwiseProd(throughputWavelength) * msiWeight);
-      Vec3f throughput2 = throughputDiffuseT + throughputSpecularT;
+      assertFinite(sampleResult.throughputConcentrated);
+      Vec3f throughputDiffuseT = cwiseProd(throughput, cwiseProd(sampleResult.throughputDiffuse, throughputWavelength)) * msiWeight;
+      Vec3f throughputConcentratedT = cwiseProd(throughput, cwiseProd(sampleResult.throughputConcentrated, throughputWavelength)) * msiWeight;
+      Vec3f throughput2 = throughputDiffuseT + throughputConcentratedT;
       assertFinite(throughput2);
 
       Vec3f normal2, albedo2;
       PathTraceWithCausticsMapResult rs = pathTraceWithCausticsMap(context, photonMap, sampleResult.lightRay, sampleResult.ray, &sampleResult.rayhit, normal2, albedo2, radius, depth + 1);
 
-      result.LSpecular += (rs.LLight + rs.LSpecular).cwiseProd(throughputSpecularT);
-      result.LCaustic += rs.LSpecular.cwiseProd(throughputDiffuseT);
+      result.LSpecular += cwiseProd(rs.LLight + rs.LSpecular, throughputConcentratedT);
+      result.LCaustic += cwiseProd(rs.LSpecular, throughputDiffuseT);
       //result.LRest += (rs.LRest + rs.LCaustic).cwiseProd(throughput2) + rs.LLight.cwiseProd(throughputDiffuseT);
-      result.LRest += (rs.LRest ).cwiseProd(throughput2) + rs.LLight.cwiseProd(throughputDiffuseT);
-      result.photonFlux += rs.photonFlux.cwiseProd(throughput2);
+      result.LRest += cwiseProd(rs.LRest , throughput2) + cwiseProd(rs.LLight, throughputDiffuseT);
+      result.photonFlux += cwiseProd(rs.photonFlux, throughput2);
       result.M += rs.M;
     }
 
@@ -499,7 +499,7 @@ PathTraceWithCausticsMapResult pathTraceWithCausticsMap(RenderContext context, P
   {
     Vec3f transmittance = beersLaw(lightRay.getTransmittance(), 1e6f);
     Vec3f Le = context.scene.evalEnvironment(ray);
-    result.LRest = transmittance.cwiseProd(Le);
+    result.LRest = cwiseProd(transmittance, Le);
     normal = Vec3f::Zero();
     albedo = result.LRest;
     return result;
@@ -592,8 +592,8 @@ float computeRadiusPixelFootPrint(RenderContext context, float defaultR, int i, 
     return defaultR;
   }
   float angle = context.scene.camera.computeRayAngle(p0 + offset, float(width), float(height));
-  float theta = std::abs(std::acos(-ray.direction().dot(rayhit.interaction.normalGeometric)));
-  float d = (context.scene.camera.getPosition() - rayhit.interaction.x).norm();
+  float theta = std::abs(std::acos(-dot(ray.direction(), rayhit.interaction.normalGeometric)));
+  float d = norm(context.scene.camera.getPosition() - rayhit.interaction.x);
 
   if (!context.scene.hasBRDFDiffuseLobe(rayhit)) // if we hit purely specular surface, we should track down a diffuse surface...
   {
@@ -610,10 +610,10 @@ float computeRadiusPixelFootPrint(RenderContext context, float defaultR, int i, 
       int tries = 0;
       do
       {
-        sampleResult = context.scene.sampleBRDFSpecular(context, LightRayInfo(), rayhit, adjoint);
+        sampleResult = context.scene.sampleBRDFConcentrated(context, LightRayInfo(), rayhit, adjoint);
         tries += 1;
-      } while (sampleResult.throughputSpecular == Vec3f::Zero() && tries < 3);
-      if (sampleResult.throughputSpecular == Vec3f::Zero()) break;
+      } while (sampleResult.throughputConcentrated == Vec3f::Zero() && tries < 3);
+      if (sampleResult.throughputConcentrated == Vec3f::Zero()) break;
 
       Ray ray2 = context.scene.constructRay(rayhit.interaction, sampleResult.direction, sampleResult.outside);
       RayHit rayhit2;
@@ -624,7 +624,7 @@ float computeRadiusPixelFootPrint(RenderContext context, float defaultR, int i, 
         return defaultR;
       }
 
-      d += (rayhit.interaction.x - rayhit2.interaction.x).norm();
+      d += norm(rayhit.interaction.x - rayhit2.interaction.x);
 
       rayhit = rayhit2;
     }

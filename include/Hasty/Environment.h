@@ -105,7 +105,7 @@ public:
     float heightF = texture->getImage().getHeight();
     Image1f imgNorm = transform<float>(texture->getImage(), [heightF](int x, int y, const auto& pixel) {
       float theta = ( (y + 0.5f) / heightF) * float(Hasty::Pi);
-      return pixel.norm() * std::sin(theta);
+      return norm(pixel) * std::sin(theta);
       });
     distribution.precompute(std::move(imgNorm));
 

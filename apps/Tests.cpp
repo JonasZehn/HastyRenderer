@@ -83,7 +83,7 @@ TEST(brdf, sampleCosineLobe)
     Vec3f lobeDirection = sampleSphereSurfaceUniformly(rng, &pDensity);
     float exponent = 1.0f + uniform01f(rng) * 10.0f;
     Vec3f wi = sampleCosineLobe(rng, lobeDirection, exponent, &pDensity);
-    EXPECT_NEARREL(wi.norm(), 1.0f, 1e-5f);
+    EXPECT_NEARREL(norm(wi), 1.0f, 1e-5f);
     float pDensity2 = evaluateCosineLobePDF(lobeDirection, exponent, wi);
     EXPECT_NEARREL(pDensity, pDensity2, 1e-5f );
   }
@@ -99,7 +99,7 @@ TEST(brdf, sampleHemisphereCosImportance)
     float pDensity;
     Vec3f normal = sampleSphereSurfaceUniformly(rng, &pDensity);
     Vec3f wi = sampleHemisphereCosImportance(rng, normal, &pDensity);
-    EXPECT_NEARREL(wi.norm(), 1.0f, 1e-4f);
+    EXPECT_NEARREL(norm(wi), 1.0f, 1e-4f);
     float pDensity2 = evaluateHemisphereCosImportancePDF(normal, wi);
     EXPECT_NEARREL(pDensity, pDensity2, 1e-4f );
   }
@@ -116,14 +116,14 @@ TEST(brdf, DGGX)
   Vec3f normal = sampleSphereSurfaceUniformly(rng, &pDensity);
   Vec3f wo = sampleHemisphereSurfaceUniformly(rng, normal, &pDensity);
   Vec3f tangent = anyOrthonormal(normal);
-  Vec3f bitangent = normal.cross(tangent);
+  Vec3f bitangent = cross(normal, tangent);
   for (int i = 0; i < n; i++)
   {
     //Vec3f wi = sampleGGXVNDFGlobal(rng, normal, alpha, wo, &pDensity);
     wo = sampleHemisphereSurfaceUniformly(rng, normal, &pDensity);
-    float d = DGGX(normal.dot(wo), tangent.dot(wo), bitangent.dot(wo), alpha, alpha);
+    float d = DGGX(dot(normal, wo), dot(tangent, wo), dot(bitangent, wo), alpha, alpha);
     EXPECT_TRUE(d >= 0.0f);
-    sum += d * normal.dot(wo) / pDensity;
+    sum += d * dot(normal, wo) / pDensity;
   }
   float estimate = sum / n;
   
@@ -140,7 +140,7 @@ TEST(brdf, sampleDGGX)
     Vec3f normal = sampleSphereSurfaceUniformly(rng, &pDensity);
     Vec3f wo = sampleHemisphereSurfaceUniformly(rng, normal, &pDensity);
     Vec3f wi = sampleDGGX(rng, normal, alpha, wo, &pDensity);
-    EXPECT_NEARREL(wi.norm(), 1.0f, 1e-4f);
+    EXPECT_NEARREL(norm(wi), 1.0f, 1e-4f);
     float pDensity2 = sampleDGGXDensity(normal, alpha, wo, wi);
     EXPECT_NEARREL(pDensity, pDensity2, 1e-2f );
   }
@@ -161,7 +161,7 @@ TEST(brdf, sampleDGGX2)
   {
     Vec3f wi = sampleDGGX(rng, normal, alpha, wo, &pDensity);
     EXPECT_TRUE(pDensity >= 0.0f);
-    sum += std::max(0.0f, normal.dot(wi)) / pDensity;
+    sum += std::max(0.0f, dot(normal, wi)) / pDensity;
   }
   float estimate = sum / n;
   EXPECT_NEARREL(estimate, float(Pi), 1e-2f );
@@ -177,10 +177,10 @@ TEST(brdf, sampleGGXVNDFGlobal)
     Vec3f normal = sampleSphereSurfaceUniformly(rng, &pDensity);
     Vec3f wo = sampleHemisphereSurfaceUniformly(rng, normal, &pDensity);
     Vec3f tangent = anyOrthonormal(normal);
-    Vec3f bitangent = normal.cross(tangent);
+    Vec3f bitangent = cross(normal, tangent);
     Vec3f wi = sampleGGXVNDFGlobal(rng, normal, alpha, alpha, tangent, bitangent, wo, &pDensity);
     EXPECT_TRUE(pDensity >= 0.0f);
-    EXPECT_NEARREL(wi.norm(), 1.0f, 1e-4f);
+    EXPECT_NEARREL(norm(wi), 1.0f, 1e-4f);
     float pDensity2 = sampleGGXVNDFGlobalDensity(normal, alpha, alpha, tangent, bitangent, wo, wi);
     EXPECT_NEARREL(pDensity, pDensity2, 1e-2f );
   }
@@ -200,10 +200,10 @@ TEST(brdf, sampleGGXVNDFGlobal2)
   for (int i = 0; i < n; i++)
   {
     Vec3f tangent = anyOrthonormal(normal);
-    Vec3f bitangent = normal.cross(tangent);
+    Vec3f bitangent = cross(normal, tangent);
     Vec3f wi = sampleGGXVNDFGlobal(rng, normal, alpha, alpha, tangent, bitangent, wo, &pDensity);
     EXPECT_TRUE(pDensity >= 0.0f);
-    sum += std::max(0.0f, normal.dot(wi)) / pDensity;
+    sum += std::max(0.0f, dot(normal, wi)) / pDensity;
   }
   float estimate = sum / n;
   EXPECT_NEARREL(estimate, float(Pi), 1e-2f );
@@ -211,8 +211,8 @@ TEST(brdf, sampleGGXVNDFGlobal2)
 
 TEST(brdf, refraction)
 {
-  Vec3f normal = Vec3f(0.1f, 0.2f, 1.0f).normalized();
-  Vec3f wi = Vec3f(0.15f, 0.05f, 1.0f).normalized();
+  Vec3f normal = normalize(Vec3f(0.1f, 0.2f, 1.0f));
+  Vec3f wi = normalize(Vec3f(0.15f, 0.05f, 1.0f));
   Vec3f wo, wi2;
   //checking going in and out gives the same direction
   computeRefractionDirection(wi, normal, 1.45f, 1.0f, &wo);

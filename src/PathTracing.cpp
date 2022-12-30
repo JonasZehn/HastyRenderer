@@ -34,10 +34,10 @@ Vec3f estimateRadiance(RenderContext context, LightRayInfo& lightRay, const Ray&
       albedo = context.scene.getAlbedo(rayhit.interaction);
     }
 
-    Vec3f throughput = beersLaw(lightRay.getTransmittance(), (rayhit.interaction.x - ray.origin()).norm());
+    Vec3f throughput = beersLaw(lightRay.getTransmittance(), norm(rayhit.interaction.x - ray.origin()) );
     if (context.scene.isSurfaceLight(rayhit))
     {
-      return throughput.cwiseProd(context.scene.getEmissionRadiance(-ray.direction(), rayhit));
+      return cwiseProd(throughput, context.scene.getEmissionRadiance(-ray.direction(), rayhit));
     }
 
     constexpr int beta = 2;
@@ -61,14 +61,14 @@ Vec3f estimateRadiance(RenderContext context, LightRayInfo& lightRay, const Ray&
     {
       MISSampleResult sampleResult = strategies.sample(context, lightRay, ray, rayhit, strategy);
       pdfs[strategy] = sampleResult.pdfOmega;
-      Vec3f throughput2 = throughput.cwiseProd(sampleResult.throughput());
+      Vec3f throughput2 = cwiseProd(throughput, sampleResult.throughput());
       sampleResult.lightRay.applyWavelength(throughput2);
 
       if (throughput2 == Vec3f::Zero() || isSelfIntersection(rayhit, sampleResult.rayhit)) continue;
 
       for (int j = 0; j < numStrategies; j++)
       {
-        if (j != strategy) pdfs[j] = strategies.evalPDF(context, rayhit, -ray.direction(), j, sampleResult.ray, sampleResult.rayhit);
+        if (j != strategy) pdfs[j] = strategies.evalPDF(context, rayhit, sampleResult.lightRay, -ray.direction(), j, sampleResult.ray, sampleResult.rayhit);
       }
 
       float msiWeight = computeMsiWeightPowerHeuristic<beta>(strategy, pdfs);
@@ -79,7 +79,7 @@ Vec3f estimateRadiance(RenderContext context, LightRayInfo& lightRay, const Ray&
 
       Vec3f normal2, albedo2;
       Vec3f Li = estimateRadiance(context, sampleResult.lightRay, sampleResult.ray, normal2, albedo2, depth + 1, &sampleResult.rayhit);
-      estimator += Li.cwiseProd(throughput2);
+      estimator += cwiseProd(Li, throughput2);
     }
 
     return estimator;
@@ -88,7 +88,7 @@ Vec3f estimateRadiance(RenderContext context, LightRayInfo& lightRay, const Ray&
   {
     Vec3f transmittance = beersLaw(lightRay.getTransmittance(), 1e6f);
     Vec3f Le = context.scene.evalEnvironment(ray);
-    Vec3f L = transmittance.cwiseProd(Le);
+    Vec3f L = cwiseProd(transmittance, Le);
     normal = Vec3f::Zero();
     albedo = L;
     return L;

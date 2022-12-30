@@ -46,7 +46,7 @@ Vec3f sampleSphereSurfaceUniformly(RNG& rng, float* pDensity)
   while (true)
   {
     Vec3f r(rng.uniformm11f(), rng.uniformm11f(), rng.uniformm11f());
-    float rsq = r.dot(r);
+    float rsq = normSq(r);
     if (rsq <= 1.0 && rsq > 1e-6f)
     {
       return r / std::sqrt(rsq);
@@ -62,10 +62,10 @@ Vec3f sampleHemisphereSurfaceUniformly(RNG& rng, const Vec3f& normal, float* pDe
   while (true)
   {
     Vec3f r(rng.uniformm11f(), rng.uniformm11f(), rng.uniformm11f());
-    float rsq = r.dot(r);
+    float rsq = normSq(r);
     if (rsq <= 1.0f && rsq > 1e-6f)
     {
-      if (r.dot(normal) >= 0.0f)
+      if (dot(r, normal) >= 0.0f)
       {
         return r / std::sqrt(rsq);
       }
@@ -99,8 +99,8 @@ Vec3f sampleHemisphereCosImportance(RNG& rng, const Vec3f& normal, float* pDensi
 
     RotationBetweenTwoVectors<float, Vec3f> rotation(Vec3f(0.0f, 0.0f, 1.0f), normal);
     dir = rotation * rv;
-    dir.normalize();
-    costheta = dir.dot(normal);
+    dir = normalize(dir);
+    costheta = dot(dir, normal);
   } while (costheta <= 0.0f); // stay clear from numerical mistakes
 
   (*pDensity) = float(InvPi) * costheta;
@@ -108,8 +108,10 @@ Vec3f sampleHemisphereCosImportance(RNG& rng, const Vec3f& normal, float* pDensi
 }
 float evaluateHemisphereCosImportancePDF(const Vec3f& normal, const Vec3f& direction)
 {
-  float cosTheta = normal.dot(direction);
-  if (cosTheta < 0.0f) return 0.0f;
+  float cosTheta = dot(normal, direction);
+  if (cosTheta < 0.0f) {
+    return 0.0f;
+  }
   return float(InvPi) * cosTheta;
 }
 
@@ -139,8 +141,8 @@ Vec3f sampleCosineLobe(RNG& rng, const Vec3f& lobeDirection, float exponent, flo
 
     RotationBetweenTwoVectors<float, Vec3f> rotation(Vec3f(0.0f, 0.0f, 1.0f), lobeDirection);
     dir = rotation * rv;
-    dir.normalize();
-    costheta = dir.dot(lobeDirection);
+    dir = normalize(dir);
+    costheta = dot(dir, lobeDirection);
   } while (costheta <= 0.0f); // stay clear from numerical mistakes
 
   (*pDensity) = (exponent + 1.0f) * 0.5f * float(InvPi) * std::pow(costheta, exponent);
@@ -149,7 +151,7 @@ Vec3f sampleCosineLobe(RNG& rng, const Vec3f& lobeDirection, float exponent, flo
 
 float evaluateCosineLobePDF(const Vec3f& lobeDirection, float exponent, const Vec3f& direction)
 {
-  float cosTheta = lobeDirection.dot(direction);
+  float cosTheta = dot(lobeDirection, direction);
   if (cosTheta < 0.0f) return 0.0f;
   return (exponent + 1.0f) * 0.5f * float(InvPi) * std::pow(cosTheta, exponent);
 }

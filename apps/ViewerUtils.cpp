@@ -14,7 +14,7 @@ void setPixel(SDL_Surface *surface, int x, int y, Uint32 pixel)
 
 uint32_t toUint32(const Vec4f& c)
 {
-  Vec4f cc = c.clamp(0.0f, 1.0f);
+  Vec4f cc = clamp(c, 0.0f, 1.0f);
 	return (static_cast<uint32_t>( 255 * cc[0]  ) & 0xFF) << 24 | (static_cast<uint32_t>(255 * cc[1]) & 0xFF) << 16 | (static_cast<uint32_t>(255 * cc[2]) & 0xFF) << 8 | (static_cast<uint32_t>(255 * cc[3]) & 0xFF);
 }
 uint32_t toUint32(const Vec3f& c, float alpha)

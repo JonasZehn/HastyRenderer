@@ -75,8 +75,8 @@ protected:
 public:
   MaterialEvalResult evaluteBRDF(const RayHit& hit, const Vec3f& wo, const Vec3f& wi, float indexOfRefractionOutside, bool adjoint, ShaderEvalFlag flags = ShaderEvalFlag::ALL);
   SampleResult sampleBRDF(RenderContext& context, const LightRayInfo& lightRay, const RayHit& rayhit, bool adjoint);
-  SampleResult sampleBRDFSpecular(RenderContext& context, const LightRayInfo& lightRay, const RayHit& rayhit, bool adjoint);
-  float evaluateSamplePDF(const RayHit& rayhit, const Vec3f& direction2);
+  SampleResult sampleBRDFConcentrated(RenderContext& context, const LightRayInfo& lightRay, const RayHit& rayhit, bool adjoint);
+  float evaluateSamplePDF(RenderContext& context, const RayHit& rayhit, const LightRayInfo& lightRay, const Vec3f& direction2);
   bool hasBRDFDiffuseLobe(const RayHit& rayhit);
   float getIORInside(const RayHit& rayhit, int wavelength);
 

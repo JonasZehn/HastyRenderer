@@ -67,57 +67,54 @@ Scene::Scene(std::filesystem::path inputfilePath)
   {
     Vec3f materialDiffuse(material.diffuse[0], material.diffuse[1], material.diffuse[2]);
 
-    if (material.dissolve == 0.0f)
+    float transmission = 1.0f - material.dissolve;
+    bool varyIORThisObject = varyGlassIOR && transmission > 0.0f;
+
+    std::unique_ptr<ITextureMap3f> normalMap;
+    if (material.bump_texname != "") // currently blender exports normal map with "bump" as key ...
     {
-      m_brdfs.emplace_back(std::make_unique<GlassBTDF>(materialDiffuse, material.ior, varyGlassIOR));
+      normalMap = Texture3f::loadTexture((sceneFolder / material.bump_texname).string(), ColorSpace::Linear);
+    }
+
+    std::unique_ptr<ITextureMap3f> albedoTexture;
+    if (material.diffuse_texname != "")
+    {
+      albedoTexture = Texture3f::loadTexture((sceneFolder / material.diffuse_texname).string(), ColorSpace::sRGB);
     }
     else
     {
-      std::unique_ptr<ITextureMap3f> normalMap;
-      if (material.bump_texname != "") // currently blender exports normal map with "bump" as key ...
-      {
-        normalMap = Texture3f::loadTexture((sceneFolder / material.bump_texname).string(), ColorSpace::Linear);
-      }
-      
-      std::unique_ptr<ITextureMap3f> albedoTexture;
-      if (material.diffuse_texname != "")
-      {
-        albedoTexture = Texture3f::loadTexture((sceneFolder / material.diffuse_texname).string(), ColorSpace::sRGB);
-      }
-      else
-      {
-        albedoTexture = std::make_unique<ConstantTexture3f>(materialDiffuse);
-      }
-      
-      std::unique_ptr<ITextureMap1f> roughnessTexture;
-      if (material.specular_highlight_texname != "") // the naming between the blender exporter and tinyobj is not consistent
-      {
-        roughnessTexture = Texture1f::loadTexture((sceneFolder / material.specular_highlight_texname).string(), ColorSpace::Linear);
-      }
-      else
-      {
-        float nSpecular = material.shininess;
-        float roughness = 1.0f - std::sqrt(nSpecular / 1000.0f); // blender currently uses the formula (1.0 - bsdf_roughness)^2 * 1000
-        roughnessTexture = std::make_unique<ConstantTexture1f>(roughness);
-      }
-
-      std::unique_ptr<ITextureMap1f> metallicTexture;
-      if (material.metallic_texname != "")
-      {
-        metallicTexture = Texture1f::loadTexture((sceneFolder / material.metallic_texname).string(), ColorSpace::Linear);
-      }
-      else
-      {
-        float metallic = material.ambient[0];
-        if (metallic == 1.0f)
-        {
-          std::cout << " warning default blender exporter exports metallic = 1, when in fact it is set to 0, consider modifying Blender/scripts/addons/io_scene_obj/export_obj.py, note that there are currently two obj exporters in blender so be careful " << std::endl;
-        }
-        metallicTexture = std::make_unique<ConstantTexture1f>(metallic);
-      }
-
-      m_brdfs.emplace_back(std::make_unique<PrincipledBRDF>(std::move(albedoTexture), std::move(roughnessTexture) , std::move(metallicTexture), material.specular[0], material.ior, std::move(normalMap), material.anisotropy));
+      albedoTexture = std::make_unique<ConstantTexture3f>(materialDiffuse);
     }
+
+    std::unique_ptr<ITextureMap1f> roughnessTexture;
+    if (material.specular_highlight_texname != "") // the naming between the blender exporter and tinyobj is not consistent
+    {
+      roughnessTexture = Texture1f::loadTexture((sceneFolder / material.specular_highlight_texname).string(), ColorSpace::Linear);
+    }
+    else
+    {
+      float nSpecular = material.shininess;
+      float roughness = 1.0f - std::sqrt(nSpecular / 1000.0f); // blender currently uses the formula (1.0 - bsdf_roughness)^2 * 1000
+      roughnessTexture = std::make_unique<ConstantTexture1f>(roughness);
+    }
+
+    std::unique_ptr<ITextureMap1f> metallicTexture;
+    if (material.metallic_texname != "")
+    {
+      metallicTexture = Texture1f::loadTexture((sceneFolder / material.metallic_texname).string(), ColorSpace::Linear);
+    }
+    else
+    {
+      float metallic = material.ambient[0];
+      if (metallic == 1.0f)
+      {
+        std::cout << " warning default blender exporter exports metallic = 1, when in fact it is set to 0, consider modifying Blender/scripts/addons/io_scene_obj/export_obj.py, note that there are currently two obj exporters in blender so be careful " << std::endl;
+      }
+      metallicTexture = std::make_unique<ConstantTexture1f>(metallic);
+    }
+
+    m_brdfs.emplace_back(std::make_unique<PrincipledBRDF>(std::move(albedoTexture), std::move(roughnessTexture), std::move(metallicTexture), material.specular[0], material.ior, std::move(normalMap), material.anisotropy, transmission, varyIORThisObject));
+
   }
 
   std::vector<float> lightAreas;
@@ -178,7 +175,7 @@ Scene::Scene(std::filesystem::path inputfilePath)
         lightTriangles.emplace_back(ids);
 
         std::array<Vec3f, 3> p = collectTriangle(s, f);
-        float area = 0.5f * (p[1] - p[0]).cross(p[2] - p[0]).norm();
+        float area = 0.5f * norm(cross(p[1] - p[0], p[2] - p[0]));
 
         lightAreas.emplace_back(area);
       }
@@ -225,15 +222,15 @@ SurfaceInteraction Scene::getInteraction(unsigned int geomID, unsigned int primI
     std::array<Vec3f, 3> nv = collectTriangleNormals(geomID, primID);
 
     interaction.normalShadingDefault = barycentricCoordinates[0] * nv[0] + barycentricCoordinates[1] * nv[1] + barycentricCoordinates[2] * nv[2];
-    interaction.normalShadingDefault.normalize();
+    interaction.normalShadingDefault = normalize(interaction.normalShadingDefault);
     
     interaction.h = 0.0f;
     for (int i = 0; i < 3; i++)
     {
       // intersect plane defined by corner + corner normal with line through interaction.x and geometric normal to get some linear geometry which we then interpolate
       // (x + ng * t) . nv - xv . nv = 0 => 
-      float nvng = interaction.normalGeometric.dot(nv[i]);
-      float hi = nvng == 0.0f ? 1e6 : (xv[i].dot(nv[i]) - interaction.x.dot(nv[i])) / nvng;
+      float nvng = dot(interaction.normalGeometric, nv[i]);
+      float hi = nvng == 0.0f ? 1e6 : (dot(xv[i], nv[i]) - dot(interaction.x, nv[i])) / nvng;
       interaction.h += interaction.barycentricCoordinates[i] *  interaction.barycentricCoordinates[i] *  hi;
     }
   }
@@ -252,7 +249,7 @@ SurfaceInteraction Scene::getInteraction(unsigned int geomID, unsigned int primI
 
   interaction.tangent = Vec3f(-interaction.x[2], 0.0f, interaction.x[0]);
   interaction.tangent = orthonormalizedOtherwiseAnyOrthonormal(interaction.normalGeometric, interaction.tangent);
-  interaction.bitangent = interaction.normalGeometric.cross(interaction.tangent);
+  interaction.bitangent = cross(interaction.normalGeometric, interaction.tangent);
 
   return interaction;
 }
@@ -267,7 +264,7 @@ Vec3f Scene::constructRayX(const SurfaceInteraction& interaction, bool outside)
   Vec3f normal = interaction.normalGeometric;
 
   float eps = 1e-5f;
-  float hmin = std::max(eps, interaction.x.norm() * eps);
+  float hmin = std::max(eps, norm(interaction.x) * eps);
   Vec3f xOffset = interaction.x + normal * (1.01f * (outside ? std::max(0.0f, interaction.h) + hmin : std::min(0.0f, interaction.h) - hmin));
   return xOffset;
 }
@@ -279,7 +276,7 @@ Ray Scene::constructRay(const SurfaceInteraction& interaction, const Vec3f& dire
 Ray Scene::constructRayEnd(const SurfaceInteraction& interaction, const Vec3f& end, bool outside)
 {
   Vec3f xOffset = constructRayX(interaction, outside);
-  return Ray(xOffset, (end - xOffset).normalized());
+  return Ray(xOffset, normalize(end - xOffset));
 }
 void Scene::rayHit(const Ray& ray, RayHit* rayhit)
 {
@@ -300,7 +297,7 @@ void Scene::rayHit(const Ray& ray, RayHit* rayhit)
   if (hasHitSurface(*rayhit))
   {
     Vec3f barycentricCoordinates(1.0f - rtcrayhit.hit.u - rtcrayhit.hit.v, rtcrayhit.hit.u, rtcrayhit.hit.v);
-    Vec3f geomNormal = Vec3f(rtcrayhit.hit.Ng_x, rtcrayhit.hit.Ng_y, rtcrayhit.hit.Ng_z).normalized();
+    Vec3f geomNormal = normalize(Vec3f(rtcrayhit.hit.Ng_x, rtcrayhit.hit.Ng_y, rtcrayhit.hit.Ng_z));
     rayhit->interaction = getInteraction(rayhit->rtc.hit.geomID, rayhit->rtc.hit.primID, barycentricCoordinates, geomNormal);
   }
 }
@@ -331,13 +328,13 @@ SampleResult Scene::sampleBRDF(RenderContext& context, const LightRayInfo& light
 {
   return getBXDF(rayhit.interaction).sample(context.rng, rayhit.interaction, lightRay, rayhit.wFrom(), [&lightRay, &context, &rayhit]() { return lightRay.getOutsideIOR(context, rayhit); }, adjoint, ShaderEvalFlag::ALL);
 }
-SampleResult Scene::sampleBRDFSpecular(RenderContext& context, const LightRayInfo& lightRay, const RayHit& rayhit, bool adjoint)
+SampleResult Scene::sampleBRDFConcentrated(RenderContext& context, const LightRayInfo& lightRay, const RayHit& rayhit, bool adjoint)
 {
-  return getBXDF(rayhit.interaction).sample(context.rng, rayhit.interaction, lightRay, rayhit.wFrom(), [&lightRay, &context, &rayhit]() { return lightRay.getOutsideIOR(context, rayhit); }, adjoint, ShaderEvalFlag::SPECULAR);
+  return getBXDF(rayhit.interaction).sample(context.rng, rayhit.interaction, lightRay, rayhit.wFrom(), [&lightRay, &context, &rayhit]() { return lightRay.getOutsideIOR(context, rayhit); }, adjoint, ShaderEvalFlag::CONCENTRATED);
 }
-float Scene::evaluateSamplePDF(const RayHit& rayhit, const Vec3f& direction2)
+float Scene::evaluateSamplePDF(RenderContext& context, const RayHit& rayhit, const LightRayInfo& lightRay, const Vec3f& direction2)
 {
-  return getBXDF(rayhit.interaction).evaluateSamplePDF(rayhit.interaction, rayhit.wFrom(), direction2);
+  return getBXDF(rayhit.interaction).evaluateSamplePDF(rayhit.interaction, rayhit.wFrom(), direction2, lightRay.getOutsideIOR(context, rayhit));
 }
 bool Scene::hasBRDFDiffuseLobe(const RayHit& hit)
 {
@@ -435,7 +432,7 @@ Vec3f Scene::getEmissionRadiance(const Vec3f& wo, unsigned int geomID, unsigned 
 }
 Vec3f Scene::getEmissionRadiance(const Vec3f& wo, const RayHit& hit) const
 {
-  if (hit.interaction.normalGeometric.dot(wo) <= 0.0f) return Vec3f::Zero();
+  if (dot(hit.interaction.normalGeometric, wo) <= 0.0f) return Vec3f::Zero();
   auto& material = getMaterial(hit);
   Vec3f materialEmission(material.emission[0], material.emission[1], material.emission[2]);
   return materialEmission * float(InvPi);
@@ -484,7 +481,7 @@ SurfaceInteraction Scene::sampleSurfaceLightPosition(RNG& rng, float* pDensity)
 
   std::array<Vec3f, 3> p = collectTriangle(ids[0], ids[1]);
 
-  Vec3f normal = (p[1] - p[0]).cross(p[2] - p[0]).normalized();
+  Vec3f normal = normalize(cross(p[1] - p[0], p[2] - p[0]));
 
   Vec3f barycentricCoordinates = sampleTriangleUniformly(rng);
   return getInteraction(geomID, primID, barycentricCoordinates, normal);
@@ -496,7 +493,7 @@ Ray Scene::sampleLightRay(RNG& rng, Vec3f* flux)
   SurfaceInteraction interaction = sampleSurfaceLightPosition(rng, &pPos);
   Vec3f direction = sampleHemisphereCosImportance(rng, interaction.normalGeometric, &pDirection);
   Vec3f L = getEmissionRadiance(direction, interaction.geomID, interaction.primID);
-  (*flux) = L * (std::abs(interaction.normalGeometric.dot(direction)) / (pPos * pDirection));
+  (*flux) = L * (std::abs(dot(interaction.normalGeometric, direction)) / (pPos * pDirection));
   assertFinite(*flux);
   return constructRay(interaction, direction, true);
 }
@@ -517,8 +514,8 @@ Ray Scene::sampleLightRayFromStartPoint(RNG& rng, const SurfaceInteraction& poin
     float pDensityA;
     SurfaceInteraction interaction2 = sampleSurfaceLightPosition(rng, &pDensityA);
     Vec3f diff = interaction2.x - point.x;
-    Vec3f direction2 = diff.normalized();
-    resultray = constructRayEnd(point, interaction2.x, point.normalGeometric.dot(diff) >= 0.0f); // pass end point so we have less numerical issues
+    Vec3f direction2 = normalize(diff);
+    resultray = constructRayEnd(point, interaction2.x, dot(point.normalGeometric, diff) >= 0.0f); // pass end point so we have less numerical issues
   
     rayHit(resultray, rayhit);
     *lightVisible = hasHitSurface(*rayhit, interaction2.geomID, interaction2.primID);
@@ -533,7 +530,7 @@ Ray Scene::sampleLightRayFromStartPoint(RNG& rng, const SurfaceInteraction& poin
   {
     assert(envTexture != nullptr);
     Vec3f direction = envTexture->sample(rng, pDensity);
-    resultray = constructRay(point, direction, point.normalGeometric.dot(direction) >= 0.0f);
+    resultray = constructRay(point, direction, dot(point.normalGeometric, direction) >= 0.0f);
     rayHit(resultray, rayhit);
     
     bool surfaceLight = isSurfaceLight(*rayhit);
@@ -565,9 +562,9 @@ float Scene::evalLightRayFromStartPointDensity(const SurfaceInteraction& point, 
     float lightStrategyPdfA = computeSurfaceLightProbabilityDensity(rayhit2);
 
     Vec3f diff = rayhit2.interaction.x - point.x;
-    float diffSq = std::max(1e-5f, (ray2.origin() - rayhit2.interaction.x).normSq());
+    float diffSq = std::max(1e-5f, normSq(ray2.origin() - rayhit2.interaction.x));
     Vec3f normal2 = rayhit2.interaction.normalGeometric;
-    float lightStrategyPdfOmega = lightStrategyPdfA * diffSq / (1e-7f + std::abs(normal2.dot(ray2.direction())));
+    float lightStrategyPdfOmega = lightStrategyPdfA * diffSq / (1e-7f + std::abs(dot(normal2, ray2.direction())));
     resultDensity = pSurfaceSampling * lightStrategyPdfOmega;
     if(envTexture != nullptr)  resultDensity += (1.0f - pSurfaceSampling) * envTexture->evalSamplingDensity(ray2.direction());
   }

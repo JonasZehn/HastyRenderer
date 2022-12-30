@@ -47,7 +47,7 @@ std::array<Vec3f, 3> collectTriangleNormals(const tinyobj::ObjReader &reader, st
     {
       //failed = true;
       std::array<Vec3f, 3> p = collectTriangle(reader, geomID, primID);
-      Vec3f n = (p[1] - p[0]).cross(p[2] - p[0]).normalized();
+      Vec3f n = normalize(cross(p[1] - p[0], p[2] - p[0]));
       for (int k = 0; k < 3; k++)
       {
         vertexNormals[k] = n;

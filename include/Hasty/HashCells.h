@@ -72,8 +72,8 @@ public:
   {
     results.clear();
     float radiusSq = radius * radius;
-    CellIndex pidxMin = computeIndex(center - Vec3f::Constant(radius));
-    CellIndex pidxMax = computeIndex(center + Vec3f::Constant(radius));
+    CellIndex pidxMin = computeIndex(center - Vec3f::Fill(radius));
+    CellIndex pidxMax = computeIndex(center + Vec3f::Fill(radius));
     for (int32_t i = pidxMin.x[0]; i <= pidxMax.x[0]; i++)
     {
       for (int32_t j = pidxMin.x[1]; j <= pidxMax.x[1]; j++)
@@ -86,7 +86,7 @@ public:
             for (uint32_t pointIdx : (iter->second))
             {
               const Vec3f& x = m_points[pointIdx];
-              if ((x - center).normSq() <= radiusSq)
+              if (normSq(x - center) <= radiusSq)
               {
                 results.push_back(pointIdx);
               }

@@ -50,65 +50,65 @@ constexpr float powci(float f)
 class Vec2f
 {
 public:
-  Vec2f()
+  inline Vec2f()
   {
 #ifdef INITIALIZE_WITH_NAN
     m_data[0] = std::numeric_limits<float>::signaling_NaN();
     m_data[1] = std::numeric_limits<float>::signaling_NaN();
 #endif
   }
-  Vec2f(float x, float y)
+  inline Vec2f(float x, float y)
   {
     m_data[0] = x;
     m_data[1] = y;
   }
-  float& operator[](std::size_t i)
+  inline float& operator[](std::size_t i)
   {
     return m_data[i];
   }
-  const float& operator[](std::size_t i) const
+  inline const float& operator[](std::size_t i) const
   {
     return m_data[i];
   }
-  Vec2f operator+(const Vec2f& v2) const
+  inline Vec2f operator+(const Vec2f& v2) const
   {
     return Vec2f(m_data[0] + v2[0], m_data[1] + v2[1]);
   }
-  Vec2f operator-(const Vec2f& v2) const
+  inline Vec2f operator-(const Vec2f& v2) const
   {
     return Vec2f(m_data[0] - v2[0], m_data[1] - v2[1]);
   }
-  Vec2f operator*(float f) const
+  inline Vec2f operator*(float f) const
   {
     return Vec2f(m_data[0] * f, m_data[1] * f);
   }
-  Vec2f& operator+=(const Vec2f& v2)
+  inline Vec2f& operator+=(const Vec2f& v2)
   {
     m_data[0] += v2[0];
     m_data[1] += v2[1];
     return *this;
   }
-  float dot(const Vec2f& v2) const
+  inline float dot(const Vec2f& v2) const
   {
     return m_data[0] * v2[0] + m_data[1] * v2[1];
   }
-  float normSq() const
+  inline float normSq() const
   {
     return this->dot(*this);
   }
-  float norm() const
+  inline float norm() const
   {
     return std::sqrt(this->dot(*this));
   }
-  static Vec2f Constant(float f)
+  inline static Vec2f Constant(float f)
   {
     return Vec2f(f, f);
   }
-  static Vec2f Zero()
+  inline static Vec2f Zero()
   {
     return Constant(0.0f);
   }
-  static Vec2f Ones()
+  inline static Vec2f Ones()
   {
     return Constant(1.0f);
   }
@@ -122,7 +122,7 @@ class Vec3f
 public:
   typedef float ScalarType;
 
-  Vec3f()
+  inline Vec3f()
   {
 #ifdef INITIALIZE_WITH_NAN
     m_data[0] = std::numeric_limits<float>::signaling_NaN();
@@ -130,158 +130,84 @@ public:
     m_data[2] = std::numeric_limits<float>::signaling_NaN();
 #endif
   }
-  Vec3f(float x, float y, float z)
+  inline Vec3f(float x, float y, float z)
   {
     m_data[0] = x;
     m_data[1] = y;
     m_data[2] = z;
   }
-  float& operator[](std::size_t i)
+  inline float& operator[](std::size_t i)
   {
     return m_data[i];
   }
-  const float& operator[](std::size_t i) const
+  inline const float& operator[](std::size_t i) const
   {
     return m_data[i];
   }
-  Vec3f operator+(const Vec3f& v2) const
+  inline Vec3f operator+(const Vec3f& v2) const
   {
     return Vec3f(m_data[0] + v2[0], m_data[1] + v2[1], m_data[2] + v2[2]);
   }
-  Vec3f& operator+=(const Vec3f& v2)
+  inline Vec3f& operator+=(const Vec3f& v2)
   {
     m_data[0] += v2[0];
     m_data[1] += v2[1];
     m_data[2] += v2[2];
     return *this;
   }
-  Vec3f operator/(float s) const
+  inline Vec3f operator/(float s) const
   {
     return Vec3f(m_data[0] / s, m_data[1] / s, m_data[2] / s);
   }
-  Vec3f& operator*=(float s)
+  inline Vec3f& operator*=(float s)
   {
     m_data[0] *= s;
     m_data[1] *= s;
     m_data[2] *= s;
     return *this;
   }
-  Vec3f& operator/=(float s)
+  inline Vec3f& operator/=(float s)
   {
     m_data[0] /= s;
     m_data[1] /= s;
     m_data[2] /= s;
     return *this;
   }
-  Vec3f operator-() const
+  inline Vec3f operator-() const
   {
     return Vec3f(-m_data[0], -m_data[1], -m_data[2]);
   }
-  Vec3f operator-(const Vec3f& v2) const
+  inline Vec3f operator-(const Vec3f& v2) const
   {
     return Vec3f(m_data[0] - v2[0], m_data[1] - v2[1], m_data[2] - v2[2]);
   }
-  Vec3f operator*(float s) const
+  inline Vec3f operator*(float s) const
   {
     return Vec3f(m_data[0]*s, m_data[1] *s, m_data[2] *s);
   }
-  bool operator==(const Vec3f& v2) const
+  inline bool operator==(const Vec3f& v2) const
   {
     return m_data[0] == v2[0] && m_data[1] == v2[1] && m_data[2] == v2[2];
   }
-  bool operator!=(const Vec3f& v2) const
+  inline bool operator!=(const Vec3f& v2) const
   {
     return !this->operator==(v2);
   }
-  Vec3f cross(const Vec3f& v2) const
-  {
-    return Vec3f(
-      m_data[1] * v2[2] - m_data[2] * v2[1],
-      m_data[2] * v2[0] - m_data[0] * v2[2],
-      m_data[0] * v2[1] - m_data[1] * v2[0]
-    );
-  }
-  float dot(const Vec3f& v2) const
-  {
-    return m_data[0] * v2[0] + m_data[1] * v2[1] + m_data[2] * v2[2];
-  }
-  float normSq() const
-  {
-    return this->dot(*this);
-  }
-  float norm() const
-  {
-    return std::sqrt(this->dot(*this));
-  }
-  float normL1() const
-  {
-    return cwiseAbs().sum();
-  }
-  float sum() const
-  {
-    return m_data[0] + m_data[1] + m_data[2];
-  }
-  void normalize()
-  {
-    (*this) /= this->norm();
-  }
-  Vec3f normalized() const
-  {
-    return (*this) / this->norm();
-  }
-  Vec3f cwiseAbs() const
-  {
-    return Vec3f(std::abs(m_data[0]), std::abs(m_data[1]), std::abs(m_data[2]));
-  }
-  Vec3f cwiseProd(const Vec3f& v2) const
-  {
-    return Vec3f(m_data[0] * v2[0], m_data[1] * v2[1], m_data[2] * v2[2]);
-  }
-  Vec3f cwiseExp() const
-  {
-    return Vec3f(std::exp(m_data[0]), std::exp(m_data[1]), std::exp(m_data[2]));
-  }
-  Vec3f cwiseLog() const
-  {
-    return Vec3f(std::log(m_data[0]), std::log(m_data[1]), std::log(m_data[2]));
-  }
-  Vec3f cwiseSqrt() const
-  {
-    return Vec3f(std::sqrt(m_data[0]), std::sqrt(m_data[1]), std::sqrt(m_data[2]));
-  }
-  Vec3f cwisePow(float exponent) const
-  {
-    return Vec3f(std::pow(m_data[0], exponent), std::pow(m_data[1], exponent), std::pow(m_data[2], exponent));
-  }
-  bool isFinite() const
-  {
-    return std::isfinite(m_data[0]) && std::isfinite(m_data[1]) && std::isfinite(m_data[2]);
-  }
-  
-  Vec3f clamp(float bottom, float top) const
-  {
-    return Vec3f(
-      std::max(bottom, std::min(top, m_data[0])),
-      std::max(bottom, std::min(top, m_data[1])),
-      std::max(bottom, std::min(top, m_data[2]))
 
-    );
-  }
-
-  static Vec3f Constant(float f)
+  inline static Vec3f Fill(float f)
   {
     return Vec3f(f, f, f);
   }
-  static Vec3f Zero()
+  inline static Vec3f Zero()
   {
-    return Constant(0.0f);
+    return Fill(0.0f);
   }
-  static Vec3f Ones()
+  inline static Vec3f Ones()
   {
-    return Constant(1.0f);
+    return Fill(1.0f);
   }
 
-  std::size_t size() const
+  inline std::size_t size() const
   {
     return m_data.size();
   }
@@ -290,17 +216,74 @@ private:
   std::array<float, 3> m_data;
 };
 
-inline float dot(const Vec3f& v1, const Vec3f& v2) {
-  return v1.dot(v2);
+inline Vec3f cross(const Vec3f& v1, const Vec3f& v2)
+{
+  return Vec3f(
+    v1[1] * v2[2] - v1[2] * v2[1],
+    v1[2] * v2[0] - v1[0] * v2[2],
+    v1[0] * v2[1] - v1[1] * v2[0]
+  );
 }
-inline float normSq(const Vec3f& v1) {
-  return v1.normSq();
+inline Vec3f abs(const Vec3f& v1)
+{
+  return Vec3f(std::abs(v1[0]), std::abs(v1[1]), std::abs(v1[2]));
 }
-inline Vec3f cross(const Vec3f& v1, const Vec3f& v2) {
-  return v1.cross(v2);
+inline Vec3f cwiseProd(const Vec3f& v1, const Vec3f& v2)
+{
+  return Vec3f(v1[0] * v2[0], v1[1] * v2[1], v1[2] * v2[2]);
 }
-inline Vec3f normalize(const Vec3f& v) {
-  return v.normalized();
+inline Vec3f exp(const Vec3f& v1)
+{
+  return Vec3f(std::exp(v1[0]), std::exp(v1[1]), std::exp(v1[2]));
+}
+inline Vec3f log(const Vec3f& v1)
+{
+  return Vec3f(std::log(v1[0]), std::log(v1[1]), std::log(v1[2]));
+}
+inline Vec3f sqrt(const Vec3f& v1)
+{
+  return Vec3f(std::sqrt(v1[0]), std::sqrt(v1[1]), std::sqrt(v1[2]));
+}
+inline Vec3f pow(const Vec3f& v1, float exponent)
+{
+  return Vec3f(std::pow(v1[0], exponent), std::pow(v1[1], exponent), std::pow(v1[2], exponent));
+}
+inline bool isFinite(const Vec3f& v1)
+{
+  return std::isfinite(v1[0]) && std::isfinite(v1[1]) && std::isfinite(v1[2]);
+}
+
+inline Vec3f clamp(const Vec3f& v1, float bottom, float top)
+{
+  return Vec3f(
+    std::max(bottom, std::min(top, v1[0])),
+    std::max(bottom, std::min(top, v1[1])),
+    std::max(bottom, std::min(top, v1[2]))
+  );
+}
+inline float dot(const Vec3f& v1, const Vec3f& v2)
+{
+  return v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2];
+}
+inline float normSq(const Vec3f& v1)
+{
+  return dot(v1, v1);
+}
+inline float norm(const Vec3f& v1)
+{
+  return std::sqrt(normSq(v1));
+}
+inline Vec3f normalize(const Vec3f& v1)
+{
+  return v1 / norm(v1);
+}
+inline float sum(const Vec3f& v1)
+{
+  return v1[0] + v1[1] + v1[2];
+}
+inline float normL1(const Vec3f& v1)
+{
+  return sum(abs(v1));
 }
 inline float mix(float v1, float v2, float lambda)
 {
@@ -329,11 +312,10 @@ inline std::ostream& operator<<(std::ostream& out, const Vec3f& v)
 
 void from_json(const nlohmann::json& j, Vec3f& v);
 
-
 class Vec4f
 {
 public:
-  Vec4f()
+  inline Vec4f()
   {
 #ifdef INITIALIZE_WITH_NAN
     m_data[0] = std::numeric_limits<float>::signaling_NaN();
@@ -342,14 +324,14 @@ public:
     m_data[3] = std::numeric_limits<float>::signaling_NaN();
 #endif
   }
-  Vec4f(float x, float y, float z, float w)
+  inline Vec4f(float x, float y, float z, float w)
   {
     m_data[0] = x;
     m_data[1] = y;
     m_data[2] = z;
     m_data[3] = w;
   }
-  Vec4f& operator+=(const Vec4f& v2)
+  inline Vec4f& operator+=(const Vec4f& v2)
   {
     m_data[0] += v2[0];
     m_data[1] += v2[1];
@@ -357,11 +339,11 @@ public:
     m_data[3] += v2[3];
     return *this;
   }
-  Vec4f operator/(float s) const
+  inline Vec4f operator/(float s) const
   {
     return Vec4f(m_data[0] / s, m_data[1] / s, m_data[2] / s, m_data[3] / s);
   }
-  Vec4f& operator/=(float s)
+  inline Vec4f& operator/=(float s)
   {
     m_data[0] /= s;
     m_data[1] /= s;
@@ -369,34 +351,24 @@ public:
     m_data[3] /= s;
     return *this;
   }
-  float& operator[](std::size_t i)
+  inline float& operator[](std::size_t i)
   {
     return m_data[i];
   }
-  const float& operator[](std::size_t i) const
+  inline const float& operator[](std::size_t i) const
   {
     return m_data[i];
-  }
-  Vec4f clamp(float bottom, float top) const
-  {
-    return Vec4f(
-      std::max(bottom, std::min(top, m_data[0])),
-      std::max(bottom, std::min(top, m_data[1])),
-      std::max(bottom, std::min(top, m_data[2])),
-      std::max(bottom, std::min(top, m_data[3]))
-
-    );
   }
   
-  static Vec4f Constant(float f)
+  inline static Vec4f Constant(float f)
   {
     return Vec4f(f, f, f, f);
   }
-  static Vec4f Zero()
+  inline static Vec4f Zero()
   {
     return Constant(0.0f);
   }
-  static Vec4f Ones()
+  inline static Vec4f Ones()
   {
     return Constant(1.0f);
   }
@@ -406,14 +378,24 @@ private:
   std::array<float, 4> m_data;
 };
 
+inline Vec4f clamp(const Vec4f &v1, float bottom, float top)
+{
+  return Vec4f(
+    std::max(bottom, std::min(top, v1[0])),
+    std::max(bottom, std::min(top, v1[1])),
+    std::max(bottom, std::min(top, v1[2])),
+    std::max(bottom, std::min(top, v1[3]))
+  );
+}
+
 inline void assertUnitLength(const Vec3f &v)
 {
-  assert(std::abs(v.norm() - 1) < 1e-4f);
+  assert(std::abs(norm(v) - 1) < 1e-4f);
 }
 
 inline void assertFinite(const Vec3f &v)
 {
-  assert(v.isFinite());
+  assert(isFinite(v));
 }
 inline void assertFinite(float v)
 {
@@ -424,7 +406,7 @@ inline void assertFinite(float v)
 class Mat2f
 {
 public:
-  Mat2f()
+  inline Mat2f()
   {
 #ifdef INITIALIZE_WITH_NAN
     m_data[0] = std::numeric_limits<float>::signaling_NaN();
@@ -433,7 +415,7 @@ public:
     m_data[3] = std::numeric_limits<float>::signaling_NaN();
 #endif
   }
-  Mat2f(const Vec2f& col1, const Vec2f& col2)
+  inline Mat2f(const Vec2f& col1, const Vec2f& col2)
   {
     this->operator()(0, 0) = col1[0];
     this->operator()(1, 0) = col1[1];
@@ -441,7 +423,7 @@ public:
     this->operator()(1, 1) = col2[1];
   }
 
-  Mat2f inverse() const
+  inline Mat2f inverse() const
   {
     Mat2f result;
     float d = this->operator()(0, 0) * this->operator()(1, 1) - this->operator()(0, 1) * this->operator()(1, 0);
@@ -452,11 +434,11 @@ public:
     return result;
   }
   
-  float& operator()(int i, int j)
+  inline float& operator()(int i, int j)
   {
     return m_data[i + 2 * j];
   }
-  float operator()(int i, int j) const
+  inline float operator()(int i, int j) const
   {
     return m_data[i + 2 * j];
   }
@@ -468,8 +450,8 @@ private:
 inline Vec3f orthonormalized(const Vec3f& v1Normalized, const Vec3f& v2)
 {
   assertUnitLength(v1Normalized);
-  Vec3f result = v2 - v2.dot(v1Normalized) * v1Normalized;
-  float length = result.norm();
+  Vec3f result = v2 - dot(v2, v1Normalized) * v1Normalized;
+  float length = norm(result);
   assert(length != 0.0f);
   result /= length;
   return result;
@@ -491,8 +473,8 @@ inline Vec3f anyOrthonormal(const Vec3f& v1Normalized)
 inline Vec3f orthonormalizedOtherwiseAnyOrthonormal(const Vec3f& v1Normalized, const Vec3f& v2)
 {
   assertUnitLength(v1Normalized);
-  Vec3f result = v2 - v2.dot(v1Normalized) * v1Normalized;
-  float length = result.norm();
+  Vec3f result = v2 - dot(v2, v1Normalized) * v1Normalized;
+  float length = norm(result);
   if (length < 1e-7f)
   {
     result = anyOrthonormal(v1Normalized);
@@ -581,12 +563,12 @@ public:
   {
     assertUnitLength(vFrom);
     assertUnitLength(vTo);
-    ScalarType cosAngle = vFrom.dot(vTo);
+    ScalarType cosAngle = dot(vFrom, vTo);
     ScalarType onePlusCosAngle = ScalarType(1.0) + cosAngle;
     if (std::abs(onePlusCosAngle) > std::numeric_limits<ScalarType>::epsilon())
     {
       // v_rot = x * cos(angle) + (k sin(angle) cross x + (k sin(angle) )  ( (k sin(angle) ) dot x ) / (1 + cos(angle))
-      VectorType kSinAngle = vFrom.cross(vTo);
+      VectorType kSinAngle = cross(vFrom, vTo);
       a = cosAngle;
       b = kSinAngle;
       c = kSinAngle;
@@ -602,13 +584,13 @@ public:
     }
   }
   
-  VectorType operator*(const VectorType& x) const
+  inline VectorType operator*(const VectorType& x) const
   {
-    return x * a + b.cross(x) + c * d.dot(x);
+    return x * a + cross(b, x) + c * dot(d, x);
   }
-  VectorType applyInverse(const VectorType& x) const
+  inline VectorType applyInverse(const VectorType& x) const
   {
-    return x * a - b.cross(x) + c * d.dot(x);
+    return x * a - cross(b, x) + c * dot(d, x);
   }
 
 private:
@@ -621,17 +603,17 @@ private:
 class Ray
 {
 public:
-  Ray(){}
-  Ray(const Vec3f& origin, const Vec3f& direction)
+  inline Ray(){}
+  inline Ray(const Vec3f& origin, const Vec3f& direction)
   {
     m_origin = origin;
     m_direction = direction;
   }
-  const Vec3f& origin() const
+  inline const Vec3f& origin() const
   {
     return m_origin;
   }
-  const Vec3f& direction() const
+  inline const Vec3f& direction() const
   {
     return m_direction;
   }
@@ -644,26 +626,26 @@ private:
 
 
 /**
-* incident N   
+* incident N
 *    |\` /|\
 *       \ |
 * ------------------
 *       /
 *     |/_
 *   return value
-* or 
+* or
 *         N    / return value
 *        /|\  /
-*         | / 
+*         | /
 * ------------------
 *          \
 *           \
 *            _| incident
-* 
+*
 */
 inline Vec3f reflect(const Vec3f& incident, const Vec3f& N)
 {
-  return incident - 2.0f * N.dot(incident) * N;
+  return incident - 2.0f * dot(N, incident) * N;
 }
 /**
 * outg    N   return value
@@ -711,22 +693,27 @@ public:
   }
 };
 
+inline float log(float v)
+{
+  return std::log(v);
+}
+inline float sqrt(float v)
+{
+  return std::sqrt(v);
+}
+
 inline float pow(float v, float exponent)
 {
   return std::pow(v, exponent);
-}
-inline Vec3f pow(const Vec3f& v, float exponent)
-{
-  return v.cwisePow(exponent);
 }
 
 inline float clamp(float v, float low, float high)
 {
   return v < low ? low : (v > high ? high : v);
 }
-inline Vec3f clamp(const Vec3f& v, float low, float high)
+inline bool isFinite(float v1)
 {
-  return v.clamp(low, high);
+  return std::isfinite(v1);
 }
 
 }

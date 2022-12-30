@@ -28,12 +28,12 @@ public:
   LightRayInfo lightRay;
   RayHit rayhit;
   Vec3f throughputDiffuse;
-  Vec3f throughputSpecular;
+  Vec3f throughputConcentrated;
   float pdfOmega;
 
   Vec3f throughput() const
   {
-    return throughputDiffuse + throughputSpecular;
+    return throughputDiffuse + throughputConcentrated;
   }
 };
 
@@ -42,7 +42,7 @@ class BRDFSamplingStrategy
 public:
 
   MISSampleResult sample(RenderContext context, const LightRayInfo& lightRay, const Ray& ray, const RayHit& rayhit);
-  float evalPDF(RenderContext context, const RayHit& rayhit, const Vec3f& woGlobal, const Ray& ray2, const RayHit& rayhit2);
+  float evalPDF(RenderContext context, const RayHit& rayhit, const LightRayInfo& lightRay, const Vec3f& woGlobal, const Ray& ray2, const RayHit& rayhit2);
 };
 
 class LightSamplingStrategy
@@ -58,19 +58,7 @@ class SamplingStrategies
 {
 public:
 
-  SamplingStrategies(RenderContext context)
-  {
-    if (context.scene.hasLight() && context.renderSettings.useMIS)
-    {
-      lightStrategyIndex = 0;
-      brdfStrategyIndex = 1;
-    }
-    else
-    {
-      lightStrategyIndex = -1;
-      brdfStrategyIndex = 0;
-    }
-  }
+  SamplingStrategies(RenderContext context);
 
   LightSamplingStrategy& getLightStrategy() { return lightStrategy; }
   int numStrategies()
@@ -96,7 +84,7 @@ public:
     }
   }
 
-  float evalPDF(RenderContext context, const RayHit& rayhit, const Vec3f& woGlobal, int strategy, const Ray& ray2, const RayHit& rayhit2)
+  float evalPDF(RenderContext context, const RayHit& rayhit, const LightRayInfo& lightRay, const Vec3f& woGlobal, int strategy, const Ray& ray2, const RayHit& rayhit2)
   {
     if (isLightStrategy(strategy))
     {
@@ -105,7 +93,7 @@ public:
     else
     {
       assert(strategy == brdfStrategyIndex);
-      return brdfStrategy.evalPDF(context, rayhit, woGlobal, ray2, rayhit2);
+      return brdfStrategy.evalPDF(context, rayhit, lightRay, woGlobal, ray2, rayhit2);
     }
   }
 private:

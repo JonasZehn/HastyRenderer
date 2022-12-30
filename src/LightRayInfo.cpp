@@ -7,12 +7,13 @@ namespace Hasty
 
 void LightRayInfo::updateMedia(const RenderContext& context, const RayHit& hit, const Vec3f& wTo)
 {
-  float ndotFrom = hit.interaction.normalGeometric.dot(hit.wFrom());
-  float ndotTo = hit.interaction.normalGeometric.dot(wTo);
+  float ndotFrom = dot(hit.interaction.normalGeometric, hit.wFrom());
+  float ndotTo = dot(hit.interaction.normalGeometric, wTo);
   if (ndotFrom >= 0.0f && ndotTo < 0.0f)
   { //entering medium
     Vec3f t = context.scene.getAlbedo(hit.interaction);
     float indexOfRefractionInside = context.scene.getIORInside(hit, this->wavelength);
+    assert(isFinite(indexOfRefractionInside));
     m_media.emplace_back(LightRayInfoMedium(hit.rtc.hit.geomID, t, indexOfRefractionInside));
     recompute();
   }
@@ -52,7 +53,7 @@ int LightRayInfo::getWavelength(RNG& rng, const Vec3f& weights)
 {
   if (wavelength == -1)
   {
-    Vec3f probabilities = weights / weights.sum();
+    Vec3f probabilities = weights / sum(weights);
     float xi = rng.uniform01f();
     if (xi < probabilities[0])
     {
@@ -80,7 +81,7 @@ float LightRayInfo::getOutsideIOR(const RenderContext& context, const RayHit& ra
 {
   // this structure stores the current index of refraction; we have to deal with multiple overlapping Manifold shapes, if they don't overlap then we will fetch the medium from the world and geomID becomes -1
   //  if they overlap we will assume that the first material we hit is the medium (this is an inconsistent view of the world but cheaper) and when we leave the other object, we keep the medium...
-  if (rayhit.wFrom().dot(rayhit.interaction.normalGeometric) < 0.0f)
+  if (dot(rayhit.wFrom(), rayhit.interaction.normalGeometric) < 0.0f)
   {
     //coming from the inside of an object
 
@@ -105,6 +106,8 @@ float LightRayInfo::getOutsideIOR(const RenderContext& context, const RayHit& ra
       if (m_media.size() == 1) return 1.0f;
       else
       {
+        assert(m_media.size() > 1);
+
         if (mediumIndex == 0) return m_media[1].indexOfRefraction;
         else return m_media[0].indexOfRefraction;
       }

@@ -33,7 +33,7 @@ private:
   Vec3f m_position = Vec3f(0.f, 0.f, 0.f);
   Vec3f m_forward = Vec3f(0.f, 0.f, -1.f);
   Vec3f m_right = Vec3f(1.f, 0.f, 0.f);
-  Vec3f m_up = m_right.cross(m_forward);
+  Vec3f m_up = cross(m_right, m_forward);
   float m_fovDegree = 45.0f;
   float m_apertureSize = 0.0f;
   float m_focalDistance = 1.0f;

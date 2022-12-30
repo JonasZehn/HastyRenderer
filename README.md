@@ -119,7 +119,7 @@ RNG:
 
 | No MIS | MIS |
 | ----------- | ----------- |
-| ![Output](images/no_mis.jpg) | ![Output](images/mis.jpg) | 
+| ![Output](images/no_mis.jpg) | ![Output](images/not_denoised.jpg) | 
 
 | Raw - 10 Samples per Pixel  | Denoised (Intel® Open Image Denoise)  |
 | ----------- | ----------- |

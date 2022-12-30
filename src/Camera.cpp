@@ -30,12 +30,12 @@ Camera::Camera()
 void Camera::setLookAt(const Vec3f& position, const Vec3f& lookAt)
 {
   m_position = position;
-  m_forward = (lookAt - position).normalized();
+  m_forward = normalize(lookAt - position);
   m_up = Vec3f(0.0f, 1.0f, 0.0f);
   //orthogonalize
-  m_up = m_up - m_up.dot(m_forward) * m_forward;
-  m_up.normalize();
-  m_right = m_forward.cross(m_up);
+  m_up = m_up - dot(m_up, m_forward) * m_forward;
+  m_up = normalize(m_up);
+  m_right = cross(m_forward, m_up);
 }
 // x goes to right, y goes to the bottom
 Ray Camera::computeRay(RNG &rng, const Vec2f& p, float frameWidth, float frameHeight)
@@ -54,14 +54,14 @@ Ray Camera::computeRay(RNG &rng, const Vec2f& p, float frameWidth, float frameHe
     float lx = (x - 0.5f * frameWidth) / frameWidth * 2.0f;
     float ly = (y - 0.5f * frameHeight) / frameWidth * 2.0f;
     Vec3f direction = m_forward + m_right * (q * lx) - m_up * (q * ly);
-    direction.normalize();
+    direction = normalize(direction);
     float density;
     Vec2f offset = sampleCircularNGonUniformly(rng, m_numBlades, m_bladeRotation, &density);
-    float t = m_focalDistance * direction.dot(m_forward);
+    float t = m_focalDistance * dot(direction, m_forward);
     Vec3f focalPoint = m_position + t * direction;
     Vec3f origin = m_position + m_apertureSize * offset[0] * m_up + m_apertureSize * offset[1] * m_right;
     // now adapt the direction
-    direction = (focalPoint - origin).normalized();
+    direction = normalize(focalPoint - origin);
 
     return Ray(origin, direction);
   }
@@ -76,7 +76,7 @@ Ray Camera::computeRay(RNG &rng, const Vec2f& p, float frameWidth, float frameHe
     float ly = (y - 0.5f * frameHeight) / frameWidth * 2.0f;
     Vec3f origin = m_position;
     Vec3f direction = m_forward + m_right * (q * lx) - m_up * (q * ly);
-    direction.normalize();
+    direction = normalize(direction);
     return Ray(origin, direction);
   }
 }

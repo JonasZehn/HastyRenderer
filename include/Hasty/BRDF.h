@@ -32,24 +32,24 @@ enum class ShaderEvalFlag
 {
   NONE = 0,
   DIFFUSE = 1,
-  SPECULAR = 2,
-  ALL = DIFFUSE | SPECULAR
+  CONCENTRATED = 2,
+  ALL = DIFFUSE | CONCENTRATED
 };
 inline bool has(ShaderEvalFlag flags, ShaderEvalFlag single)
 {
-  assert(single == ShaderEvalFlag::DIFFUSE || single == ShaderEvalFlag::SPECULAR);
+  assert(single == ShaderEvalFlag::DIFFUSE || single == ShaderEvalFlag::CONCENTRATED);
   return (static_cast<int>(flags) & static_cast<int>(single)) != 0;
 }
 
 struct MaterialEvalResult
 {
-  MaterialEvalResult(const Vec3f& fDiffuse, const Vec3f &fSpecular, const Vec3f& n)
-    :fDiffuse(fDiffuse), fSpecular(fSpecular), normalShading(n)
+  MaterialEvalResult(const Vec3f& fDiffuse, const Vec3f& fConcentrated, const Vec3f& n)
+    :fDiffuse(fDiffuse), fConcentrated(fConcentrated), normalShading(n)
   {
 
   }
   Vec3f fDiffuse;
-  Vec3f fSpecular;
+  Vec3f fConcentrated;
   Vec3f normalShading;
 };
 
@@ -59,12 +59,12 @@ struct SampleResult
   Vec3f direction;
   LightRayInfo lightRay;
   Vec3f throughputDiffuse;
-  Vec3f throughputSpecular;
+  Vec3f throughputConcentrated;
   float pdfOmega;
 
   Vec3f throughput() const
   {
-    return throughputDiffuse + throughputSpecular;
+    return throughputDiffuse + throughputConcentrated;
   }
 };
 
@@ -76,7 +76,7 @@ public:
   virtual MaterialEvalResult evaluate(const SurfaceInteraction& interaction, const Vec3f& wo, const Vec3f& wi, float indexOfRefractionOutside, bool adjoint, ShaderEvalFlag evalFlag) = 0;
 
   virtual SampleResult sample(RNG& rng, const SurfaceInteraction& interaction, const LightRayInfo& lightRay, const Vec3f& wOut, OutsideIORFunctor getOutsideIOR, bool adjoint, ShaderEvalFlag evalFlag) = 0;
-  virtual float evaluateSamplePDF(const SurfaceInteraction &interaction, const Vec3f& wo, const Vec3f& wi) = 0;
+  virtual float evaluateSamplePDF(const SurfaceInteraction& interaction, const Vec3f& wo, const Vec3f& wi, float outsideIOR) = 0;
 
   virtual bool hasDiffuseLobe(const SurfaceInteraction& interaction) = 0;
   virtual float getIndexOfRefraction(int wavelength) const = 0;
@@ -92,41 +92,14 @@ inline float fusedQuartzIndexOfRefraction(float wavelengthMicroMeter)
   return std::sqrt(1.0f + a + b + c);
 }
 
-// Microfacet Models for Refraction through Rough Surfaces
-class GlassBTDF final : public BXDF
-{
-public:
-  Vec3f albedo;
-
-  GlassBTDF(const Vec3f& albedo, float indexOfRefraction, bool varyIOR)
-    :albedo(albedo), indexOfRefraction(indexOfRefraction), varyIOR(varyIOR)
-  {
-  }
-
-  Vec3f getAlbedo(const SurfaceInteraction& interaction) const { return albedo; }
-  MaterialEvalResult evaluate(const SurfaceInteraction& interaction, const Vec3f& wo, const Vec3f& wi, float indexOfRefractionOutside, bool adjoint, ShaderEvalFlag evalFlag);
-  float evaluateSpecular(const Vec3f& wo, const Vec3f& wi, const Vec3f& normalGeometric, const Vec3f& normal, float indexOfRefractionOutside, float indexOfRefractionMat, bool adjoint);
-  MaterialEvalResult evaluateSpecular(const SurfaceInteraction& interaction, const Vec3f& wo, const Vec3f& wi, const Vec3f &normalGeometric, const Vec3f& normal, float indexOfRefractionOutside, bool adjoint);
-  SampleResult sample(RNG& rng, const SurfaceInteraction& interaction, const LightRayInfo& lightRay, const Vec3f& wOut, OutsideIORFunctor getOutsideIOR, bool adjoint, ShaderEvalFlag evalFlag);
-  Vec3f sampleSpecular(RNG& rng, const SurfaceInteraction& interaction, LightRayInfo& lightRay, const Vec3f& wOut, OutsideIORFunctor getOutsideIOR, bool adjoint, Vec3f* throughputDiffuse, Vec3f* throughputSpecular, float* pDensity, bool *outside);
-  float evaluateSamplePDF(const SurfaceInteraction &interaction, const Vec3f& wo, const Vec3f& wi);
-  bool hasDiffuseLobe(const SurfaceInteraction& interaction);
-
-  float getIndexOfRefraction(int wavelength) const;
-private:
-
-  float indexOfRefraction;
-  bool varyIOR;
-};
-
 class PrincipledBRDF final : public BXDF
 {
 public:
 
-  PrincipledBRDF(std::unique_ptr<ITextureMap3f> albedo, std::unique_ptr<ITextureMap1f> roughness, std::unique_ptr<ITextureMap1f> metallic, float specular, float indexOfRefraction, std::unique_ptr<ITextureMap3f> normalMap, float anisotropy);
+  PrincipledBRDF(std::unique_ptr<ITextureMap3f> albedo, std::unique_ptr<ITextureMap1f> roughness, std::unique_ptr<ITextureMap1f> metallic, float specular, float indexOfRefraction, std::unique_ptr<ITextureMap3f> normalMap, float anisotropy, float transmission, bool varyIOR);
   ~PrincipledBRDF();
 
-  float getIndexOfRefraction(int wavelength) const { return 1.0f; }
+  float getIndexOfRefraction(int wavelength) const;
   const ITextureMap3f& getAlbedo() const { return *albedo; }
   Vec3f getAlbedo(const SurfaceInteraction& interaction) const { return albedo->evaluate(interaction); }
 
@@ -135,23 +108,37 @@ public:
 
   float getSpecular() const { return specular; }
 
-  Vec3f getShadingNormal(const SurfaceInteraction& interaction, const Vec3f& wo);
+  // returns normal in direction of wo
+  Vec3f getShadingNormal(const SurfaceInteraction& interaction, const Vec3f& wo, float dotNgWo);
   float computeAlpha(float roughness);
-  void computeProbability(float metallicHit, float specularHit, float* diffSpecMix, float* pProbablitySpec);
-  void computeAnisotropyParameters(const SurfaceInteraction& interaction, const Vec3f& normalShading, float alpha, float &alpha_t, float &alpha_b, Vec3f& tangent, Vec3f& bitangent);
+
+  struct ProbabilityResult
+  {
+    bool noStrategy;
+    float pDiffuseStrategy;
+    float pSpecularStrategy;
+    float pRefractiveStrategy;
+    bool refractionPossible;
+    float FDaccurate;
+    float cosT;
+  };
+  ProbabilityResult computeProbability(float metallicHit, float specularHit, float transmissionHit, float cos_o, float indexOfRefraction_o, float indexOfRefraction_t, ShaderEvalFlag evalFlag);
+  void computeAnisotropyParameters(const SurfaceInteraction& interaction, const Vec3f& normalShading, float alpha, float& alpha_t, float& alpha_b, Vec3f& tangent, Vec3f& bitangent);
   MaterialEvalResult evaluate(const SurfaceInteraction& interaction, const Vec3f& wo, const Vec3f& wi, float indexOfRefractionOutside, bool adjoint, ShaderEvalFlag evalFlag);
   SampleResult sample(RNG& rng, const SurfaceInteraction& interaction, const LightRayInfo& lightRay, const Vec3f& wOut, OutsideIORFunctor getOutsideIOR, bool adjoint, ShaderEvalFlag evalFlag);
-  Vec3f sampleSpecular(RNG& rng, const SurfaceInteraction& interaction, const LightRayInfo& lightRay, const Vec3f& wOut, OutsideIORFunctor getOutsideIOR, bool adjoint, Vec3f* throughputDiffuse, Vec3f* throughputSpecular, float* pDensity, bool *outside);
-  float evaluateSamplePDF(const SurfaceInteraction &interaction, const Vec3f& wo, const Vec3f& wi);
+  float evaluateSamplePDF(const SurfaceInteraction& interaction, const Vec3f& wo, const Vec3f& wi, float outsideIOR);
   bool hasDiffuseLobe(const SurfaceInteraction& interaction);
+
 private:
   std::unique_ptr<ITextureMap3f> albedo;
   std::unique_ptr<ITextureMap1f> roughness;
   std::unique_ptr<ITextureMap1f> metallic;
   float specular;
-  float IOR;
+  float indexOfRefraction;
   std::unique_ptr<ITextureMap3f> normalMap;
   float anisotropy;
+  float transmission;
+  bool varyIOR;
 };
 
 }
