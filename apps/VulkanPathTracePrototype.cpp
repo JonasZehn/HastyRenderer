@@ -16,69 +16,85 @@ using namespace Hasty;
 
 #define _VK_HASTY_LOAD_FUNCTION(logicalDevice, x)  pfn ## _ ## x = reinterpret_cast<decltype(pfn ## _ ## x)>(vkGetDeviceProcAddr(logicalDevice, #x));
 
-struct CameraUniformBufferObject {
+struct CameraUniformBufferObject
+{
   alignas(4) Vec3f position;
   alignas(4) float fovSlope;
   alignas(4) Vec3f forward;
   alignas(4) Vec3f right;
   alignas(4) Vec3f up;
 };
-struct MaterialUniformBufferObject {
+struct MaterialUniformBufferObject
+{
   alignas(4) Vec3f emission;
   alignas(4) float specular;
   alignas(4) float transmission;
 };
-struct PushConstantsSample {
+struct PushConstantsSample
+{
   int32_t nSamples;
 };
 
 
 template<typename _PixelType>
-struct VulkanPixelTraits {
+struct VulkanPixelTraits
+{
 
 };
 template<>
-struct VulkanPixelTraits < float > {
+struct VulkanPixelTraits < float >
+{
   static const VkFormat Format = VK_FORMAT_R32_SFLOAT;
 };
 template<>
-struct VulkanPixelTraits<Vec4f> {
+struct VulkanPixelTraits<Vec4f>
+{
   static const VkFormat Format = VK_FORMAT_R32G32B32A32_SFLOAT;
 };
 
-class RaytracerPrototype {
+class RaytracerPrototype
+{
 public:
 
-  void destroy() {
-    if (deviceAndQueue) {
+  void destroy()
+  {
+    if(deviceAndQueue)
+    {
       deviceAndQueue->waitDeviceIdle();
       VkDevice logicalDevice = deviceAndQueue->getLogicalDevice();
 
-      if (semaphore) {
+      if(semaphore)
+      {
         vkDestroySemaphore(logicalDevice, semaphore, nullptr);
         semaphore = nullptr;
       }
-      if (pipeline) {
+      if(pipeline)
+      {
         vkDestroyPipeline(logicalDevice, pipeline, nullptr);
         pipeline = nullptr;
       }
-      if (pipelineLayout) {
+      if(pipelineLayout)
+      {
         vkDestroyPipelineLayout(logicalDevice, pipelineLayout, nullptr);
         pipelineLayout = nullptr;
       }
-      if (descriptorSetLayout) {
+      if(descriptorSetLayout)
+      {
         vkDestroyDescriptorSetLayout(logicalDevice, descriptorSetLayout, nullptr);
         descriptorSetLayout = nullptr;
       }
-      if (descriptorPool) {
+      if(descriptorPool)
+      {
         vkDestroyDescriptorPool(logicalDevice, descriptorPool, nullptr);
         descriptorPool = nullptr;
       }
-      if (accelerationStructureTopLevel) {
+      if(accelerationStructureTopLevel)
+      {
         pfn_vkDestroyAccelerationStructureKHR(deviceAndQueue->getLogicalDevice(), accelerationStructureTopLevel, nullptr);
         accelerationStructureTopLevel = nullptr;
       }
-      if (accelerationStructureBottomLevel) {
+      if(accelerationStructureBottomLevel)
+      {
         pfn_vkDestroyAccelerationStructureKHR(deviceAndQueue->getLogicalDevice(), accelerationStructureBottomLevel, nullptr);
         accelerationStructureBottomLevel = nullptr;
       }
@@ -88,7 +104,8 @@ public:
     }
   }
 
-  void loadFunctions(VkDevice logicalDevice) {
+  void loadFunctions(VkDevice logicalDevice)
+  {
     _VK_HASTY_LOAD_FUNCTION(logicalDevice, vkGetAccelerationStructureBuildSizesKHR);
     _VK_HASTY_LOAD_FUNCTION(logicalDevice, vkCreateAccelerationStructureKHR);
     _VK_HASTY_LOAD_FUNCTION(logicalDevice, vkCmdBuildAccelerationStructuresKHR);
@@ -97,11 +114,12 @@ public:
   }
 
   template<typename _PixelType>
-  void allocateAndTransferImageToGPUAndTransitionLayout(const Image<_PixelType> &imageCPU, std::unique_ptr<VulkanBuffer> &imageBuffer, std::unique_ptr<VulkanImage> &imageGPU, VkImageLayout finalImageLayout) {
+  void allocateAndTransferImageToGPUAndTransitionLayout(const Image<_PixelType>& imageCPU, std::unique_ptr<VulkanBuffer>& imageBuffer, std::unique_ptr<VulkanImage>& imageGPU, VkImageLayout finalImageLayout)
+  {
     std::size_t imageByteCount = sizeof(_PixelType) * imageCPU.size();
     imageBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, imageByteCount, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
-    imageBuffer->write((void *) imageCPU.data(), imageByteCount);
+    imageBuffer->write((void*)imageCPU.data(), imageByteCount);
 
     imageGPU = std::make_unique<VulkanImage>(
       deviceAndQueue,
@@ -120,20 +138,27 @@ public:
 
   // value type for a constant value or a pointer to a large existing image
   template<typename _PixelType>
-  struct ImagePtrOrConstant {
+  struct ImagePtrOrConstant
+  {
     typedef Image<_PixelType> ValueType;
     typedef Image<_PixelType> const* PtrType;
 
-    ImagePtrOrConstant(ValueType val):value(val) {
+    ImagePtrOrConstant(ValueType val) :value(val)
+    {
     }
-    ImagePtrOrConstant(PtrType ptr):value(ptr) {
+    ImagePtrOrConstant(PtrType ptr) :value(ptr)
+    {
 
     }
 
-    Image<_PixelType> const* getPtr() const { 
-      if (std::holds_alternative<ValueType>(value)  ) {
+    Image<_PixelType> const* getPtr() const
+    {
+      if(std::holds_alternative<ValueType>(value))
+      {
         return &std::get<ValueType>(value);
-      } else{
+      }
+      else
+      {
         return std::get<PtrType>(value);
       }
     }
@@ -143,30 +168,36 @@ public:
   };
 
   template<typename _PixelType>
-  ImagePtrOrConstant<_PixelType> getImagePointer(ITextureMap<_PixelType> const * textureMap) {
+  ImagePtrOrConstant<_PixelType> getImagePointer(ITextureMap<_PixelType> const* textureMap)
+  {
     ConstantTexture<_PixelType> const* constantTexture = dynamic_cast<ConstantTexture<_PixelType> const*>(textureMap);
     Texture<_PixelType> const* texture = dynamic_cast<Texture<_PixelType> const*>(textureMap);
 
-    if (constantTexture != nullptr) {
+    if(constantTexture != nullptr)
+    {
       Image<_PixelType> constantImage(1, 1);
       constantImage(0, 0) = constantTexture->getValue();
       return constantImage;
     }
-    else if (texture != nullptr) {
+    else if(texture != nullptr)
+    {
       return &texture->getImage();
     }
-    else {
+    else
+    {
       throw std::runtime_error("unsupported/not implemented input texture");
     }
     return nullptr;
   }
 
-  void transferDataToGPU(Scene &scene, uint32_t renderWidth, uint32_t renderHeight) {
+  void transferDataToGPU(Scene& scene, uint32_t renderWidth, uint32_t renderHeight)
+  {
     std::vector<float> vertices = scene.getVertices();
     std::vector<std::size_t> geometryIDs = scene.getGeometryIDs();
     vertexCount = vertices.size() / 3;
     faceCount = 0;
-    for (std::size_t geometryID : geometryIDs) {
+    for(std::size_t geometryID : geometryIDs)
+    {
       faceCount += scene.getTriangleCount(geometryID);
     }
     std::vector<Vec2f> textureCoordinates;
@@ -178,7 +209,8 @@ public:
     std::vector<MaterialUniformBufferObject> materials;
     materials.reserve(scene.getMaterialCount());
 
-    for (int materialIdx = 0; materialIdx < scene.getMaterialCount(); materialIdx++) {
+    for(int materialIdx = 0; materialIdx < scene.getMaterialCount(); materialIdx++)
+    {
 
       BXDF& bxdf = scene.getBXDFByIndex(materialIdx);
       PrincipledBRDF* principledBRDF = dynamic_cast<PrincipledBRDF*>(&bxdf);
@@ -196,8 +228,10 @@ public:
       ImagePtrOrConstant<Vec3f> albedoImage3(constImage3f);
       ImagePtrOrConstant<float> metallicImage(constImage1f);
       ImagePtrOrConstant<float> roughnessImage(constImage1f);
-      if (material.emission == Vec3f::Zero()) {
-        if (principledBRDF != nullptr) {
+      if(material.emission == Vec3f::Zero())
+      {
+        if(principledBRDF != nullptr)
+        {
           albedoImage3 = getImagePointer<Vec3f>(&principledBRDF->getAlbedo());
           metallicImage = getImagePointer<float>(&principledBRDF->getMetallic());
           roughnessImage = getImagePointer<float>(&principledBRDF->getRoughness());
@@ -227,9 +261,10 @@ public:
     }
 
     std::size_t faceOffset = 0;
-    for (std::size_t geometryID : geometryIDs) {
+    for(std::size_t geometryID : geometryIDs)
+    {
       std::size_t geometryFaceCount = scene.getTriangleCount(geometryID);
-      for (std::size_t primIndex = 0; primIndex < geometryFaceCount; primIndex++)
+      for(std::size_t primIndex = 0; primIndex < geometryFaceCount; primIndex++)
       {
         std::array<int, 3> tri = scene.getTriangleVertexIndices(geometryID, primIndex);
         indices.push_back(tri[0]);
@@ -240,7 +275,7 @@ public:
 
         std::array<Vec2f, 3> uv = { Vec2f::Zero(), Vec2f::Zero(), Vec2f::Zero() };
         std::optional< std::array<Vec2f, 3> > uvOptional = scene.getTriangleUV(geometryID, primIndex);
-        if (uvOptional.has_value()) uv = uvOptional.value();
+        if(uvOptional.has_value()) uv = uvOptional.value();
 
         textureCoordinates.push_back(uv[0]);
         textureCoordinates.push_back(uv[1]);
@@ -255,10 +290,13 @@ public:
     std::vector<uint32_t> randomInputState;
     int numUintsPerPixel = 3;
     randomInputState.reserve(renderWidth * renderHeight * numUintsPerPixel);
-    for (int i = 0; i < renderWidth; i++) {
-      for (int j = 0; j < renderHeight; j++) {
-        for (int k = 0; k < numUintsPerPixel; k++) {
-          randomInputState.push_back( rng() );
+    for(int i = 0; i < renderWidth; i++)
+    {
+      for(int j = 0; j < renderHeight; j++)
+      {
+        for(int k = 0; k < numUintsPerPixel; k++)
+        {
+          randomInputState.push_back(rng());
         }
       }
     }
@@ -295,7 +333,7 @@ public:
 
     randomInputStateBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, randomInputStateByteCount, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
     randomInputStateBuffer->write((void*)randomInputState.data(), randomInputStateByteCount);
-    
+
     CameraUniformBufferObject cameraData;
     cameraData.position = scene.camera.getPosition();
     cameraData.fovSlope = scene.camera.getFoVSlope();
@@ -307,7 +345,8 @@ public:
 
     deviceAndQueue->waitQueueIdle();
   }
-  void buildBottomLevel() {
+  void buildBottomLevel()
+  {
 
     VkDeviceAddress vertexBufferDeviceAddress = vertexBuffer->getDeviceAddress(deviceAndQueue->getLogicalDevice());
     VkDeviceAddress indexBufferDeviceAddress = indexBuffer->getDeviceAddress(deviceAndQueue->getLogicalDevice());
@@ -375,7 +414,8 @@ public:
     deviceAndQueue->endSingleTimeCommandBuffer(cmdBuf, fence.getRaw());
     deviceAndQueue->waitForFence(fence);
   }
-  void buildTopLevel() {
+  void buildTopLevel()
+  {
 
     VkDevice logicalDevice = deviceAndQueue->getLogicalDevice();
     VkCommandBuffer cmdBuf = deviceAndQueue->beginSingleTimeCommandBuffer();
@@ -402,7 +442,7 @@ public:
     VkAccelerationStructureGeometryInstancesDataKHR geometryInstances{ VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR };
     geometryInstances.arrayOfPointers = VK_FALSE;
     geometryInstances.data.deviceAddress = instancesBuffer.getDeviceAddress(logicalDevice);
-    
+
     VkAccelerationStructureGeometryKHR geometry{ VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR };
     geometry.geometryType = VK_GEOMETRY_TYPE_INSTANCES_KHR;
     geometry.geometry.instances = geometryInstances;
@@ -452,7 +492,8 @@ public:
     deviceAndQueue->waitForFence(fence);
   }
 
-  void buildAccelerationStructure() {
+  void buildAccelerationStructure()
+  {
 
     buildBottomLevel();
     buildTopLevel();
@@ -484,7 +525,8 @@ public:
     VK_CHECK_RESULT(vkEndCommandBuffer(commandBuffer));
   }
 
-  void preprareCompute(const std::shared_ptr<VulkanComputeDeviceAndQueue>& deviceAndQueue, int nSamples, VulkanImage& colorImage, VulkanImage& normalImage, VulkanImage& albedoImage) {
+  void preprareCompute(const std::shared_ptr<VulkanComputeDeviceAndQueue>& deviceAndQueue, int nSamples, VulkanImage& colorImage, VulkanImage& normalImage, VulkanImage& albedoImage)
+  {
     VkDevice logicalDevice = deviceAndQueue->getLogicalDevice();
 
     std::vector<VkDescriptorPoolSize> poolSizes = {
@@ -541,17 +583,20 @@ public:
     VkDescriptorBufferInfo materialDescriptorBufferInfo = materialBuffer->descriptorBufferInfo();
 
     std::vector<VkDescriptorImageInfo> albedoImagesDescriptorBufferInfos(albedoImages.size());
-    for (size_t i = 0; i < albedoImages.size(); i++) {
+    for(size_t i = 0; i < albedoImages.size(); i++)
+    {
       albedoImagesDescriptorBufferInfos[i] = albedoImages[i]->getDescriptor();
     }
 
     std::vector<VkDescriptorImageInfo> metallicImagesDescriptorBufferInfos(metallicImages.size());
-    for (size_t i = 0; i < metallicImages.size(); i++) {
+    for(size_t i = 0; i < metallicImages.size(); i++)
+    {
       metallicImagesDescriptorBufferInfos[i] = metallicImages[i]->getDescriptor();
     }
 
     std::vector<VkDescriptorImageInfo> roughnessImagesDescriptorBufferInfos(roughnessImages.size());
-    for (size_t i = 0; i < roughnessImages.size(); i++) {
+    for(size_t i = 0; i < roughnessImages.size(); i++)
+    {
       roughnessImagesDescriptorBufferInfos[i] = roughnessImages[i]->getDescriptor();
     }
 
@@ -617,7 +662,8 @@ public:
 
     buildComputeCommandBuffer(nSamples, colorImage.getWidth(), colorImage.getHeight());
   }
-  void run(RenderJob &job, Image3f &colorImage, Image3f & normalImage, Image3f &albedoImage) {
+  void run(RenderJob& job, Image3f& colorImage, Image3f& normalImage, Image3f& albedoImage)
+  {
     VkDeviceSize renderWidth = job.renderSettings.width;
     VkDeviceSize renderHeight = job.renderSettings.height;
 
@@ -629,7 +675,7 @@ public:
 
     Image4f outputImage;
     outputImage.setZero(renderWidth, renderHeight);
-    
+
     int nSamples = job.renderSettings.numSamples;
 
     VkDeviceSize bufferSizeBytes = outputImage.byteCount();
@@ -742,14 +788,14 @@ private:
 
 int main(int argc, char* argv[])
 {
-  if (argc != 3)
+  if(argc != 3)
   {
     std::cout << " unexpected number of arguments: " << argc << " expecting 3, usage <binary> <renderJobFile> <outputDirectory> " << std::endl;
     return 1;
   }
 
   std::filesystem::path outputFolder = argv[2];
-  if (!std::filesystem::is_directory(outputFolder))
+  if(!std::filesystem::is_directory(outputFolder))
   {
     std::cout << "error given output path " << outputFolder << " is not a directory " << std::endl;
     return 1;
@@ -761,7 +807,7 @@ int main(int argc, char* argv[])
   {
     job.loadJSON(argv[1]);
   }
-  catch (const std::exception& e)
+  catch(const std::exception& e)
   {
     std::cout << "exception: " << e.what() << std::endl;
     return 2;
@@ -774,7 +820,7 @@ int main(int argc, char* argv[])
     RaytracerPrototype raytracer;
     raytracer.run(job, colorImage, normalImage, albedoImage);
   }
-  catch (const std::exception& e)
+  catch(const std::exception& e)
   {
     std::cout << "exception: " << e.what() << std::endl;
     return 3;
@@ -784,7 +830,7 @@ int main(int argc, char* argv[])
   {
     postProcessAndSaveToDisk(outputFolder, colorImage, normalImage, albedoImage);
   }
-  catch (const std::exception& e)
+  catch(const std::exception& e)
   {
     std::cout << "exception: " << e.what() << std::endl;
     return 5;

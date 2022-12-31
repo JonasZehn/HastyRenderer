@@ -55,7 +55,7 @@ public:
   }
   void initialize(const std::vector<Vec3f>& points)
   {
-    for (uint32_t idx = 0; idx < points.size(); idx++)
+    for(uint32_t idx = 0; idx < points.size(); idx++)
     {
       const Vec3f& p = points[idx];
       m_map[computeIndex(p)].push_back(idx);
@@ -74,19 +74,19 @@ public:
     float radiusSq = radius * radius;
     CellIndex pidxMin = computeIndex(center - Vec3f::Fill(radius));
     CellIndex pidxMax = computeIndex(center + Vec3f::Fill(radius));
-    for (int32_t i = pidxMin.x[0]; i <= pidxMax.x[0]; i++)
+    for(int32_t i = pidxMin.x[0]; i <= pidxMax.x[0]; i++)
     {
-      for (int32_t j = pidxMin.x[1]; j <= pidxMax.x[1]; j++)
+      for(int32_t j = pidxMin.x[1]; j <= pidxMax.x[1]; j++)
       {
-        for (int32_t k = pidxMin.x[2]; k <= pidxMax.x[2]; k++)
+        for(int32_t k = pidxMin.x[2]; k <= pidxMax.x[2]; k++)
         {
           auto iter = m_map.find(CellIndex(i, j, k));
-          if (iter != m_map.end())
+          if(iter != m_map.end())
           {
-            for (uint32_t pointIdx : (iter->second))
+            for(uint32_t pointIdx : (iter->second))
             {
               const Vec3f& x = m_points[pointIdx];
-              if (normSq(x - center) <= radiusSq)
+              if(normSq(x - center) <= radiusSq)
               {
                 results.push_back(pointIdx);
               }

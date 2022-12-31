@@ -1,6 +1,7 @@
 #include <Hasty/Vulkan.h>
 
-namespace Hasty {
+namespace Hasty
+{
 
 VulkanBuffer::VulkanBuffer(const std::shared_ptr<VulkanComputeDeviceAndQueue>& _deviceAndQueue, std::size_t bufferSize, VkBufferUsageFlags usageFlags, VkMemoryPropertyFlags memoryFlags)
 {
@@ -27,13 +28,15 @@ VulkanBuffer::VulkanBuffer(const std::shared_ptr<VulkanComputeDeviceAndQueue>& _
   allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
   allocInfo.allocationSize = memRequirements.size;
 
-  if (usageFlags & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) {
+  if(usageFlags & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT)
+  {
     flagInfo.flags |= VK_MEMORY_ALLOCATE_DEVICE_ADDRESS_BIT;
     allocInfo.pNext = &flagInfo;
   }
 
   std::optional<uint32_t> memoryTypeIndex = deviceAndQueue->getMemoryTypeIndex(memRequirements.memoryTypeBits, memoryFlags);
-  if (!memoryTypeIndex.has_value()) {
+  if(!memoryTypeIndex.has_value())
+  {
     throw std::runtime_error("no memory type found");
   }
   allocInfo.memoryTypeIndex = memoryTypeIndex.value();
@@ -41,15 +44,19 @@ VulkanBuffer::VulkanBuffer(const std::shared_ptr<VulkanComputeDeviceAndQueue>& _
 
   VK_CHECK_RESULT(vkBindBufferMemory(logicalDevice, buffer, bufferMemory, 0));
 }
-void VulkanBuffer::destroy() {
-  if (deviceAndQueue) {
+void VulkanBuffer::destroy()
+{
+  if(deviceAndQueue)
+  {
     VkDevice logicalDevice = deviceAndQueue->logicalDevice;
 
-    if (bufferMemory != nullptr) {
+    if(bufferMemory != nullptr)
+    {
       vkFreeMemory(logicalDevice, bufferMemory, nullptr);
       bufferMemory = nullptr;
     }
-    if (buffer != nullptr) {
+    if(buffer != nullptr)
+    {
       vkDestroyBuffer(logicalDevice, buffer, nullptr);
       buffer = nullptr;
     }
@@ -57,7 +64,8 @@ void VulkanBuffer::destroy() {
     deviceAndQueue = nullptr;
   }
 }
-VulkanBuffer& VulkanBuffer::operator=(VulkanBuffer&& b) {
+VulkanBuffer& VulkanBuffer::operator=(VulkanBuffer&& b)
+{
   this->deviceAndQueue = b.deviceAndQueue;
   this->buffer = b.buffer;
   this->bufferMemory = b.bufferMemory;
@@ -66,7 +74,8 @@ VulkanBuffer& VulkanBuffer::operator=(VulkanBuffer&& b) {
   b.bufferMemory = nullptr;
   return *this;
 }
-void VulkanBuffer::write(void* src, std::size_t byteCount) {
+void VulkanBuffer::write(void* src, std::size_t byteCount)
+{
   VkDevice logicalDevice = deviceAndQueue->logicalDevice;
 
   void* dst;
@@ -74,7 +83,8 @@ void VulkanBuffer::write(void* src, std::size_t byteCount) {
   memcpy(dst, src, static_cast<size_t>(byteCount));
   vkUnmapMemory(logicalDevice, bufferMemory);
 }
-void VulkanBuffer::read(void* dst, std::size_t byteCount) {
+void VulkanBuffer::read(void* dst, std::size_t byteCount)
+{
   VkDevice logicalDevice = deviceAndQueue->logicalDevice;
 
   void* src;
@@ -82,20 +92,23 @@ void VulkanBuffer::read(void* dst, std::size_t byteCount) {
   memcpy(dst, src, static_cast<size_t>(byteCount));
   vkUnmapMemory(logicalDevice, bufferMemory);
 }
-VkDeviceAddress VulkanBuffer::getDeviceAddress(VkDevice logicalDevice) {
+VkDeviceAddress VulkanBuffer::getDeviceAddress(VkDevice logicalDevice)
+{
   VkBufferDeviceAddressInfo bufferDeviceAddressInfo{};
   bufferDeviceAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
   bufferDeviceAddressInfo.pNext = nullptr;
   bufferDeviceAddressInfo.buffer = this->buffer;
   return vkGetBufferDeviceAddress(logicalDevice, &bufferDeviceAddressInfo);
 }
-VkDescriptorBufferInfo VulkanBuffer::descriptorBufferInfo() {
+VkDescriptorBufferInfo VulkanBuffer::descriptorBufferInfo()
+{
   VkDescriptorBufferInfo result{};
   result.buffer = this->buffer;
   result.range = VK_WHOLE_SIZE;
   return result;
 }
-VulkanImage::VulkanImage(const std::shared_ptr<VulkanComputeDeviceAndQueue>& _deviceAndQueue, uint32_t _width, uint32_t _height, VkFormat _format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties) {
+VulkanImage::VulkanImage(const std::shared_ptr<VulkanComputeDeviceAndQueue>& _deviceAndQueue, uint32_t _width, uint32_t _height, VkFormat _format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties)
+{
   assert(image == nullptr);
 
   deviceAndQueue = _deviceAndQueue;
@@ -129,7 +142,8 @@ VulkanImage::VulkanImage(const std::shared_ptr<VulkanComputeDeviceAndQueue>& _de
   allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
   allocInfo.allocationSize = memRequirements.size;
   std::optional<uint32_t> memoryTypeIndex = deviceAndQueue->getMemoryTypeIndex(memRequirements.memoryTypeBits, properties);
-  if (!memoryTypeIndex.has_value()) {
+  if(!memoryTypeIndex.has_value())
+  {
     throw std::runtime_error("no memory type found");
   }
   allocInfo.memoryTypeIndex = memoryTypeIndex.value();
@@ -171,7 +185,8 @@ VulkanImage::VulkanImage(const std::shared_ptr<VulkanComputeDeviceAndQueue>& _de
 
   stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
 }
-VulkanImage& VulkanImage::operator=(VulkanImage&& b) {
+VulkanImage& VulkanImage::operator=(VulkanImage&& b)
+{
   this->deviceAndQueue = b.deviceAndQueue;
   this->image = b.image;
   this->imageMemory = b.imageMemory;
@@ -192,44 +207,54 @@ VulkanImage& VulkanImage::operator=(VulkanImage&& b) {
   return *this;
 }
 
-VulkanImage::~VulkanImage() {
+VulkanImage::~VulkanImage()
+{
   destroy();
 }
 
-void VulkanImage::updateDescriptor() {
+void VulkanImage::updateDescriptor()
+{
   descriptor.sampler = sampler;
   descriptor.imageView = view;
   descriptor.imageLayout = layout;
 }
 
-void VulkanImage::destroy() {
-  if (deviceAndQueue) {
+void VulkanImage::destroy()
+{
+  if(deviceAndQueue)
+  {
     VkDevice logicalDevice = deviceAndQueue->logicalDevice;
-    if (sampler != nullptr) {
+    if(sampler != nullptr)
+    {
       vkDestroySampler(logicalDevice, sampler, nullptr);
       sampler = nullptr;
     }
-    if (view != nullptr) {
+    if(view != nullptr)
+    {
       vkDestroyImageView(logicalDevice, view, nullptr);
       view = nullptr;
     }
 
-    if (imageMemory != nullptr) {
+    if(imageMemory != nullptr)
+    {
       vkFreeMemory(logicalDevice, imageMemory, nullptr);
       imageMemory = nullptr;
     }
-    if (image != nullptr) {
+    if(image != nullptr)
+    {
       vkDestroyImage(logicalDevice, image, nullptr);
       image = nullptr;
     }
     deviceAndQueue = nullptr;
   }
 }
-void VulkanInstance::init(bool enableValidationLayers) {
+void VulkanInstance::init(bool enableValidationLayers)
+{
   assert(rawInstance == nullptr);
 
   std::vector<const char*> validationLayers;
-  if (enableValidationLayers) {
+  if(enableValidationLayers)
+  {
     validationLayers.push_back("VK_LAYER_KHRONOS_validation");
   }
 
@@ -253,13 +278,16 @@ void VulkanInstance::init(bool enableValidationLayers) {
 
   VK_CHECK_RESULT(vkCreateInstance(&createInfo, nullptr, &rawInstance));
 }
-void VulkanInstance::destroy() {
-  if (rawInstance != nullptr) {
+void VulkanInstance::destroy()
+{
+  if(rawInstance != nullptr)
+  {
     vkDestroyInstance(rawInstance, nullptr);
     rawInstance = nullptr;
   }
 }
-VulkanFence::VulkanFence(const std::shared_ptr<VulkanComputeDeviceAndQueue>& _deviceAndQueue) {
+VulkanFence::VulkanFence(const std::shared_ptr<VulkanComputeDeviceAndQueue>& _deviceAndQueue)
+{
   deviceAndQueue = _deviceAndQueue;
   VkDevice logicalDevice = deviceAndQueue->getLogicalDevice();
 
@@ -269,7 +297,8 @@ VulkanFence::VulkanFence(const std::shared_ptr<VulkanComputeDeviceAndQueue>& _de
   createInfo.flags = 0;
   vkCreateFence(logicalDevice, &createInfo, nullptr, &fence);
 }
-VulkanFence& VulkanFence::operator=(VulkanFence&& b) {
+VulkanFence& VulkanFence::operator=(VulkanFence&& b)
+{
   this->deviceAndQueue = b.deviceAndQueue;
   this->fence = b.fence;
   b.deviceAndQueue = nullptr;
@@ -277,10 +306,13 @@ VulkanFence& VulkanFence::operator=(VulkanFence&& b) {
 
   return *this;
 }
-void VulkanFence::destroy() {
-  if (deviceAndQueue) {
+void VulkanFence::destroy()
+{
+  if(deviceAndQueue)
+  {
     VkDevice logicalDevice = deviceAndQueue->getLogicalDevice();
-    if (fence != nullptr) {
+    if(fence != nullptr)
+    {
       vkDestroyFence(logicalDevice, fence, nullptr);
       fence = nullptr;
     }

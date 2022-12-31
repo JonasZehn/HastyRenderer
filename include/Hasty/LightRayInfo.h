@@ -40,17 +40,19 @@ public:
   const Vec3f& getTransmittance() const { return transmittance; }
 
   void updateMedia(const RenderContext& context, const RayHit& hit, const Vec3f& wi);
-  int getWavelength(RNG& rng, const Vec3f& probabilities);
-  void applyWavelength(Vec3f& throughput);
-  float getOutsideIOR(const RenderContext& context, const RayHit& rayhit) const ;
-
-  int wavelength;
+  int getWavelength() const { return wavelength; }
+  int sampleOrGetWavelength(RNG& rng, const Vec3f& sampleWeights, bool sample, float& sampleProbability);
+  float getOutsideIOR(const RenderContext& context, const RayHit& rayhit) const;
 
 private:
+  int wavelength;
+
   void recompute();
   SmallVector<LightRayInfoMedium, 4> m_media;
   Vec3f transmittance;
   float probabilityChange;
 };
+
+typedef int32_t Wavelength;
 
 }

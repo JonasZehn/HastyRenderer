@@ -7,10 +7,12 @@
 namespace Hasty
 {
 
-inline std::vector<char> readFile(const std::filesystem::path& filename) {
+inline std::vector<char> readFile(const std::filesystem::path& filename)
+{
   std::ifstream filestream(filename, std::ios::binary);
 
-  if (!filestream.is_open()) {
+  if(!filestream.is_open())
+  {
     throw std::runtime_error("failed to open file '" + filename.string() + "'!");
   }
 

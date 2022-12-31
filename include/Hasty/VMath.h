@@ -30,11 +30,11 @@ template<int N>
 constexpr float powci(float f)
 {
   static_assert(N >= 0, "only support non negative exponents, use pow instead");
-  if constexpr (N == 0) return 1.0f;
+  if constexpr(N == 0) return 1.0f;
   else
   {
     float q = powci<N / 2>(f);
-    if constexpr (N % 2 == 1)
+    if constexpr(N % 2 == 1)
     {
       return f * (q * q);
     }
@@ -183,7 +183,7 @@ public:
   }
   inline Vec3f operator*(float s) const
   {
-    return Vec3f(m_data[0]*s, m_data[1] *s, m_data[2] *s);
+    return Vec3f(m_data[0] * s, m_data[1] * s, m_data[2] * s);
   }
   inline bool operator==(const Vec3f& v2) const
   {
@@ -292,7 +292,7 @@ inline float mix(float v1, float v2, float lambda)
 inline Vec3f mix(const Vec3f& v1, const Vec3f& v2, float lambda)
 {
   Vec3f result;
-  for (int i = 0; i < result.size(); i++)
+  for(int i = 0; i < result.size(); i++)
   {
     result[i] = (1.0f - lambda) * v1[i] + lambda * v2[i];
   }
@@ -359,7 +359,7 @@ public:
   {
     return m_data[i];
   }
-  
+
   inline static Vec4f Constant(float f)
   {
     return Vec4f(f, f, f, f);
@@ -378,7 +378,7 @@ private:
   std::array<float, 4> m_data;
 };
 
-inline Vec4f clamp(const Vec4f &v1, float bottom, float top)
+inline Vec4f clamp(const Vec4f& v1, float bottom, float top)
 {
   return Vec4f(
     std::max(bottom, std::min(top, v1[0])),
@@ -388,12 +388,12 @@ inline Vec4f clamp(const Vec4f &v1, float bottom, float top)
   );
 }
 
-inline void assertUnitLength(const Vec3f &v)
+inline void assertUnitLength(const Vec3f& v)
 {
   assert(std::abs(norm(v) - 1) < 1e-4f);
 }
 
-inline void assertFinite(const Vec3f &v)
+inline void assertFinite(const Vec3f& v)
 {
   assert(isFinite(v));
 }
@@ -433,7 +433,7 @@ public:
     result(1, 1) = this->operator()(0, 0) / d;
     return result;
   }
-  
+
   inline float& operator()(int i, int j)
   {
     return m_data[i + 2 * j];
@@ -460,7 +460,7 @@ inline Vec3f orthonormalized(const Vec3f& v1Normalized, const Vec3f& v2)
 inline Vec3f anyOrthonormal(const Vec3f& v1Normalized)
 {
   assertUnitLength(v1Normalized);
-  if (std::abs(v1Normalized[0]) < 0.7f)
+  if(std::abs(v1Normalized[0]) < 0.7f)
   {
     return orthonormalized(v1Normalized, Vec3f(1.0f, 0.0f, 0.0f));
   }
@@ -475,7 +475,7 @@ inline Vec3f orthonormalizedOtherwiseAnyOrthonormal(const Vec3f& v1Normalized, c
   assertUnitLength(v1Normalized);
   Vec3f result = v2 - dot(v2, v1Normalized) * v1Normalized;
   float length = norm(result);
-  if (length < 1e-7f)
+  if(length < 1e-7f)
   {
     result = anyOrthonormal(v1Normalized);
   }
@@ -558,6 +558,10 @@ template<class ScalarType, class VectorType>
 class RotationBetweenTwoVectors
 {
 public:
+  template<class S, class V>
+  friend V applyRotation(const RotationBetweenTwoVectors<S, V>& rotation, const V& x);
+  template<class S, class V>
+  friend V applyRotationInverse(const RotationBetweenTwoVectors<S, V>& rotation, const V& x);
 
   RotationBetweenTwoVectors(const VectorType& vFrom, const VectorType& vTo)
   {
@@ -565,7 +569,7 @@ public:
     assertUnitLength(vTo);
     ScalarType cosAngle = dot(vFrom, vTo);
     ScalarType onePlusCosAngle = ScalarType(1.0) + cosAngle;
-    if (std::abs(onePlusCosAngle) > std::numeric_limits<ScalarType>::epsilon())
+    if(std::abs(onePlusCosAngle) > std::numeric_limits<ScalarType>::epsilon())
     {
       // v_rot = x * cos(angle) + (k sin(angle) cross x + (k sin(angle) )  ( (k sin(angle) ) dot x ) / (1 + cos(angle))
       VectorType kSinAngle = cross(vFrom, vTo);
@@ -583,15 +587,6 @@ public:
       d = k * ScalarType(2.0); // k* (ScalarType(1.0) - cosAngle);
     }
   }
-  
-  inline VectorType operator*(const VectorType& x) const
-  {
-    return x * a + cross(b, x) + c * dot(d, x);
-  }
-  inline VectorType applyInverse(const VectorType& x) const
-  {
-    return x * a - cross(b, x) + c * dot(d, x);
-  }
 
 private:
   ScalarType a;
@@ -599,11 +594,21 @@ private:
   VectorType c;
   VectorType d;
 };
+template<class ScalarType, class VectorType>
+inline VectorType applyRotation(const RotationBetweenTwoVectors<ScalarType, VectorType>& rotation, const VectorType& x)
+{
+  return x * rotation.a + cross(rotation.b, x) + rotation.c * dot(rotation.d, x);
+}
+template<class ScalarType, class VectorType>
+inline VectorType applyRotationInverse(const RotationBetweenTwoVectors<ScalarType, VectorType>& rotation, const VectorType& x)
+{
+  return x * rotation.a - cross(rotation.b, x) + rotation.c * dot(rotation.d, x);
+}
 
 class Ray
 {
 public:
-  inline Ray(){}
+  inline Ray() {}
   inline Ray(const Vec3f& origin, const Vec3f& direction)
   {
     m_origin = origin;
@@ -678,7 +683,7 @@ public:
     ToDirectionResult result;
     result.cosTheta = std::cos(c[0]);
     result.sinTheta = std::sin(c[0]);
-    float sinphi = std::sin(c[1]); 
+    float sinphi = std::sin(c[1]);
     float cosphi = std::cos(c[1]);
     result.direction = Vec3f(result.sinTheta * cosphi, result.cosTheta, result.sinTheta * sinphi);
     return result;

@@ -9,7 +9,7 @@ namespace Hasty
 void from_json(const nlohmann::json& j, Camera& camera)
 {
   Vec3f pos = j.at("position").get<Vec3f>();
-  if (j.find("look_at") != j.end())
+  if(j.find("look_at") != j.end())
   {
     camera.setLookAt(pos, j.at("look_at").get<Vec3f>());
   }
@@ -38,10 +38,10 @@ void Camera::setLookAt(const Vec3f& position, const Vec3f& lookAt)
   m_right = cross(m_forward, m_up);
 }
 // x goes to right, y goes to the bottom
-Ray Camera::computeRay(RNG &rng, const Vec2f& p, float frameWidth, float frameHeight)
+Ray Camera::computeRay(RNG& rng, const Vec2f& p, float frameWidth, float frameHeight)
 {
   bool depthOfField = m_apertureSize > 0.0f;
-  if (depthOfField)
+  if(depthOfField)
   {
     // we aren't doing  a "physical" lense for now
      // focal plane is at m_position + m_forward * m_focal distance

@@ -13,7 +13,7 @@ namespace Hasty
 class RayHit;
 struct SurfaceInteraction;
 
-inline void computeUVMapTriangleDerivative(const std::array<Vec3f, 3> &xv, const std::array<Vec2f, 3> &uv, Vec3f &dpdu, Vec3f &dpdv)
+inline void computeUVMapTriangleDerivative(const std::array<Vec3f, 3>& xv, const std::array<Vec2f, 3>& uv, Vec3f& dpdu, Vec3f& dpdv)
 {
   // tangent ~= \partial p / \partial u
   // \partial p / \partial beta = d/dbeta ( P * [1 - beta[0] - beta[1]; beta[0]; beta[1]]) = [P[1] - P[0], P[2] - P[0]]
@@ -46,7 +46,8 @@ public:
     return m_color;
   }
 
-  ResultType getValue() const {
+  ResultType getValue() const
+  {
     return m_color;
   }
 
@@ -66,7 +67,7 @@ struct SamplingOptions
 
   AddressMode modeU = AddressMode::Repeat;
   AddressMode modeV = AddressMode::Repeat;
-  
+
 };
 
 
@@ -113,18 +114,18 @@ public:
   ~Texture()
   {
   }
-  
+
   virtual ResultType evaluate(const SurfaceInteraction& interaction);
   ResultType evaluateUV(const Vec2f& uv) const
   {
     float u, oneMinusV;
-    switch (options.modeU)
+    switch(options.modeU)
     {
     case SamplingOptions::AddressMode::Repeat: u = fmod1p1(uv[0]); break;
     case SamplingOptions::AddressMode::ClampToEdge: u = clamp(uv[0], 0.0f, 1.0f - std::numeric_limits<float>::epsilon()); break;
     default: throw std::runtime_error("u mode not implemented");
     }
-    switch (options.modeV)
+    switch(options.modeV)
     {
     case SamplingOptions::AddressMode::Repeat: oneMinusV = fmod1p1(1.0f - uv[1]); break;  // putting one minus here, so result is definetly in [0, 1) // our coordinate system here is : 0,0 is bottom left of image (last row), 1,1 is top r ight
     case SamplingOptions::AddressMode::ClampToEdge: oneMinusV = clamp(1.0f - uv[1], 0.0f, 1.0f - std::numeric_limits<float>::epsilon()); break;
@@ -143,7 +144,7 @@ public:
   }
 
   const Image<ResultType>& getImage() const { return m_image; }
-  
+
   SamplingOptions options;
 private:
   Image<ResultType> m_image;

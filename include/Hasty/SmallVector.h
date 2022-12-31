@@ -21,7 +21,7 @@ public:
   }
   void emplace_back(T&& v)
   {
-    if (m_size >= N)
+    if(m_size >= N)
     {
       m_v.emplace_back(std::move(v));
     }
@@ -37,14 +37,14 @@ public:
   }
   void resize(std::size_t newsize)
   {
-    if (newsize < N) m_v.clear();
+    if(newsize < N) m_v.clear();
     else m_v.resize(newsize - N);
 
     m_size = newsize;
   }
   const T& operator[](std::size_t index) const
   {
-    if (index >= N)
+    if(index >= N)
     {
       return m_v[index - N];
     }
@@ -60,7 +60,7 @@ public:
   void remove(std::size_t index)
   {
     assert(index < m_size&& m_size > 0);
-    for (std::size_t j = index; j < m_size - 1; j++)
+    for(std::size_t j = index; j < m_size - 1; j++)
     {
       this->operator[](j) = this->operator[](j + 1);
     }

@@ -27,7 +27,7 @@ public:
   float operator()()
   {
     NumberType x = d - n;
-    if (x == 1)
+    if(x == 1)
     {
       n = 1;
       d *= b;
@@ -35,7 +35,7 @@ public:
     else
     {
       NumberType y = d / b;
-      while (x <= y)
+      while(x <= y)
       {
         y /= b;
       }
@@ -144,16 +144,16 @@ public:
   ~RNG();
 
   uint32_t get4bytes();
-  
+
   /** returns a value in the range [0, 1) */
   float uniform01f()
   {
     uint32_t u32 = get4bytes();
-    float result = float(u32 & uint32_t(0x007FFFFF) ) * std::pow(2.0f, -23.f); // this is faster than std::ldexpf(u32, -23), thats so wierd
+    float result = float(u32 & uint32_t(0x007FFFFF)) * std::pow(2.0f, -23.f); // this is faster than std::ldexpf(u32, -23), thats so wierd
     assert(result < 1.0f);
     return result;
   }
-  
+
   Vec2f uniform01Vec2f()
   {
     return Vec2f(uniform01f(), uniform01f());
@@ -196,7 +196,8 @@ private:
 namespace Hasty
 {
 
-inline float uniform01f(RNG& rng) {
+inline float uniform01f(RNG& rng)
+{
   return rng.uniform01f();
 }
 

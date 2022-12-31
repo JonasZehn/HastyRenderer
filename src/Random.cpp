@@ -38,7 +38,7 @@ RNG::RNG(uint64_t seed)
 RNG::~RNG() {}
 uint32_t RNG::get4bytes()
 {
-  if (offset >= bufferSize)
+  if(offset >= bufferSize)
   {
     prng_gen(state.get(), (uint8_t*)buf.data(), sizeof(uint32_t) * bufferSize);
     offset = 0;

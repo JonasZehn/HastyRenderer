@@ -96,7 +96,7 @@ public:
 
   void build()
   {
-    if (m_useHashCells)
+    if(m_useHashCells)
     {
       hashCells.initialize(points);
     }
@@ -108,7 +108,7 @@ public:
 
   void printStats()
   {
-    if (m_useHashCells)
+    if(m_useHashCells)
     {
       hashCells.printStats();
     }
@@ -116,7 +116,7 @@ public:
 
   void radiusSearch(const Vec3f& center, float radius, PhotonSearchResult* result)
   {
-    if (m_useHashCells)
+    if(m_useHashCells)
     {
       result->photons = &photons;
       hashCells.radiusNeighbors(center, radius, result->idcs);
@@ -124,12 +124,12 @@ public:
     else
     {
       result->photons = &photons;
-    
+
       nanoflann::SearchParams params;
       params.sorted = false;
       const size_t nMatches = tree.radiusSearch(&center[0], adaptorConvertRadius(radius), ret_matches, params);
       result->idcs.clear();
-      for (const auto & p : ret_matches)
+      for(const auto& p : ret_matches)
       {
         uint32_t index = p.first;
         result->idcs.push_back(index);
@@ -146,7 +146,7 @@ public:
     std::array<float, N> outDistancesSq;
     tree.knnSearch(&center[0], indices.size(), &indices[0], &outDistancesSq[0]);
     std::sort(outDistancesSq.begin(), outDistancesSq.end());
-    return std::sqrt(outDistancesSq[N-1]);
+    return std::sqrt(outDistancesSq[N - 1]);
   }
 
   std::size_t photonCount() const
@@ -190,7 +190,7 @@ private:
 
 void tracePhoton(RenderContext context, PhotonMap& photonMap, const Ray& a_ray, const Vec3f& a_flux, bool causticsMap)
 {
-  if (!isFinite(a_flux))
+  if(!isFinite(a_flux))
   {
     std::cout << " warning INPUT flux is not finite " << std::endl;
   }
@@ -200,16 +200,16 @@ void tracePhoton(RenderContext context, PhotonMap& photonMap, const Ray& a_ray, 
   Ray ray = a_ray;
   RayHit rayhit;
   context.scene.rayHit(ray, rayhit);
-  if (!hasHitSurface(rayhit)) return;
+  if(!hasHitSurface(rayhit)) return;
 
-  Vec3f transmittance = beersLaw(lightRay.getTransmittance(), norm(rayhit.interaction.x - ray.origin()) );
+  Vec3f transmittance = beersLaw(lightRay.getTransmittance(), norm(rayhit.interaction.x - ray.origin()));
   flux = cwiseProd(flux, transmittance);
 
   bool storeOnSpecular = false;
 
-  for (int depth = 0; depth < context.renderSettings.maxDepth; depth++)
+  for(int depth = 0; depth < context.renderSettings.maxDepth; depth++)
   {
-    if (!isFinite(flux))
+    if(!isFinite(flux))
     {
       std::cout << " warning flux is not finite " << std::endl;
       break;
@@ -218,7 +218,7 @@ void tracePhoton(RenderContext context, PhotonMap& photonMap, const Ray& a_ray, 
     bool doStore;
     if(causticsMap) doStore = context.scene.hasBRDFDiffuseLobe(rayhit) && depth > 0; // don't store first object, thats not a caustic mate
     else doStore = storeOnSpecular || context.scene.hasBRDFDiffuseLobe(rayhit);
-    if (doStore)
+    if(doStore)
     {
       photonMap.addPhoton(ray, rayhit, flux);
     }
@@ -226,7 +226,7 @@ void tracePhoton(RenderContext context, PhotonMap& photonMap, const Ray& a_ray, 
     // sample output direction
     bool adjoint = true;
     SampleResult sampleResult;
-    if (causticsMap)
+    if(causticsMap)
     {
       sampleResult = context.scene.sampleBRDFConcentrated(context, lightRay, rayhit, adjoint);
     }
@@ -234,26 +234,24 @@ void tracePhoton(RenderContext context, PhotonMap& photonMap, const Ray& a_ray, 
     {
       sampleResult = context.scene.sampleBRDF(context, lightRay, rayhit, adjoint);
     }
-    lightRay = sampleResult.lightRay;
     Vec3f throughputThis = sampleResult.throughput();
     assertFinite(throughputThis);
-    lightRay.applyWavelength(throughputThis);
-    if (throughputThis == Vec3f::Zero()) break;
+    if(throughputThis == Vec3f::Zero()) break;
 
     Ray ray2 = context.scene.constructRay(rayhit.interaction, sampleResult.direction, sampleResult.outside);
     RayHit rayhit2;
     context.scene.rayHit(ray2, rayhit2);
-    if (!hasHitSurface(rayhit2) || isSelfIntersection(rayhit, rayhit2)) break;
+    if(!hasHitSurface(rayhit2) || isSelfIntersection(rayhit, rayhit2)) break;
 
     //beer's law; moving from hit.x to hit2.x;
     lightRay.updateMedia(context, rayhit, sampleResult.direction);
-    Vec3f transmittance = beersLaw(lightRay.getTransmittance(), norm(rayhit2.interaction.x - ray2.origin()) );
+    Vec3f transmittance = beersLaw(lightRay.getTransmittance(), norm(rayhit2.interaction.x - ray2.origin()));
     throughputThis = cwiseProd(throughputThis, transmittance);
 
     // should we absorb photon:
     float minQ = 1.0f - std::pow(0.1f, 1.0f / context.renderSettings.maxDepth); // probability roulette after maxdepth, 1.0 - p(r0 | r1 | r2 ..) = 1.0 - p(r_i)^80 = 1.0 - pr^80 = 0.9 , pr^80 =  0.1
     float rouletteQ = std::max(minQ, 1.0f - norm(throughputThis)); // trying to keep the flux the same....  
-    if (uniform01f(context.rng) <= rouletteQ)
+    if(uniform01f(context.rng) <= rouletteQ)
     {
       break;
     }
@@ -270,10 +268,11 @@ struct PhotonFluxEstimate
   Vec3f fluxEstimate = Vec3f::Zero();
   int M;
 };
-PhotonFluxEstimate photonMapFluxEstimate(RenderContext context, PhotonMap &map, PhotonSearchResult &photons, const Ray& ray, const RayHit& rayhit, float &radius) {
+PhotonFluxEstimate photonMapFluxEstimate(RenderContext context, PhotonMap& map, PhotonSearchResult& photons, const Ray& ray, const RayHit& rayhit, float& radius)
+{
   PhotonFluxEstimate result;
 
-  if (radius <= 0.0f)
+  if(radius <= 0.0f)
   {
     radius = 1.01f * map.nnearestNeighborDistance<5>(rayhit.interaction.x);
   }
@@ -282,7 +281,7 @@ PhotonFluxEstimate photonMapFluxEstimate(RenderContext context, PhotonMap &map, 
 
   bool adjoint = false;
 
-  for (int i = 0; i < photons.size(); i++)
+  for(int i = 0; i < photons.size(); i++)
   {
     const Photon& photon = photons[i];
     MaterialEvalResult evalResult = context.scene.evaluteBRDF(rayhit, rayhit.wFrom(), photon.wi, 1.0f, adjoint, ShaderEvalFlag::DIFFUSE);
@@ -301,16 +300,16 @@ struct GatherPhotonsResult
   Vec3f L = Vec3f::Zero();
   int M = 0;
 };
-GatherPhotonsResult gatherPhotons(RenderContext context, PhotonMap& photonMap, const Ray& a_ray, const RayHit& a_rayhit, Vec3f& a_normal, Vec3f& albedo, float &radius)
+GatherPhotonsResult gatherPhotons(RenderContext context, PhotonMap& photonMap, const Ray& a_ray, const RayHit& a_rayhit, Vec3f& a_normal, Vec3f& albedo, float& radius)
 {
   GatherPhotonsResult result;
 
   LightRayInfo lightRay;
 
-  if (!hasHitSurface(a_rayhit))
+  if(!hasHitSurface(a_rayhit))
   {
     Vec3f transmittance = beersLaw(lightRay.getTransmittance(), 1e6f);
-    
+
     Vec3f Le = context.scene.evalEnvironment(a_ray);
     result.L = cwiseProd(transmittance, Le);
     a_normal = Vec3f::Zero();
@@ -327,17 +326,17 @@ GatherPhotonsResult gatherPhotons(RenderContext context, PhotonMap& photonMap, c
   Ray ray = a_ray;
   Vec3f throughput = Vec3f::Ones();
   //first we need to find first diffuse surface: TODO try SECOND diffuse surface
-  for (int depth = 0; depth < 80; depth++)
+  for(int depth = 0; depth < 80; depth++)
   {
     //beer's law; moving from hit.x to hit2.x;
     Vec3f transmittance = beersLaw(lightRay.getTransmittance(), norm(rayhit.interaction.x - ray.origin()));
     throughput = cwiseProd(throughput, transmittance);
 
     float rouletteQ = 0.0f;
-    if (depth >= context.renderSettings.roulleteStartDepth) rouletteQ = context.renderSettings.rouletteQ;
+    if(depth >= context.renderSettings.roulleteStartDepth) rouletteQ = context.renderSettings.rouletteQ;
 
     // https://www.pbr-book.org/3ed-2018/Monte_Carlo_Integration/Russian_Roulette_and_Splitting#
-    if (uniform01f(context.rng) <= rouletteQ)
+    if(uniform01f(context.rng) <= rouletteQ)
     {
       break;
     }
@@ -348,7 +347,7 @@ GatherPhotonsResult gatherPhotons(RenderContext context, PhotonMap& photonMap, c
     bool doADiffuseBounce = false;
     bool adjoint = false;
     SampleResult sampleResult;
-    if (doADiffuseBounce && depth == 0)
+    if(doADiffuseBounce && depth == 0)
     {
       sampleResult = context.scene.sampleBRDF(context, lightRay, rayhit, adjoint);
     }
@@ -356,7 +355,7 @@ GatherPhotonsResult gatherPhotons(RenderContext context, PhotonMap& photonMap, c
     {
       sampleResult = context.scene.sampleBRDFConcentrated(context, lightRay, rayhit, adjoint);
 
-      if (context.scene.hasBRDFDiffuseLobe(rayhit))
+      if(context.scene.hasBRDFDiffuseLobe(rayhit))
       {
         PhotonFluxEstimate estimate = photonMapFluxEstimate(context, photonMap, photons, ray, rayhit, radius);
         result.M += estimate.M;
@@ -366,10 +365,8 @@ GatherPhotonsResult gatherPhotons(RenderContext context, PhotonMap& photonMap, c
     Vec3f throughputThis = sampleResult.throughput();
     assertFinite(throughputThis);
 
-    lightRay.applyWavelength(throughput);
-
     throughput = cwiseProd(throughput, throughputThis);
-    if (throughput == Vec3f::Zero()) break;
+    if(throughput == Vec3f::Zero()) break;
 
     Ray ray2 = context.scene.constructRay(rayhit.interaction, sampleResult.direction, sampleResult.outside);
     RayHit rayhit2;
@@ -377,9 +374,9 @@ GatherPhotonsResult gatherPhotons(RenderContext context, PhotonMap& photonMap, c
 
     lightRay.updateMedia(context, rayhit, ray2.direction());
 
-    if (isSelfIntersection(rayhit, rayhit2)) break;
+    if(isSelfIntersection(rayhit, rayhit2)) break;
 
-    if (!hasHitSurface(rayhit2))
+    if(!hasHitSurface(rayhit2))
     {
       Vec3f Le = context.scene.evalEnvironment(ray2);
       result.L += cwiseProd(throughput, Le);
@@ -389,7 +386,7 @@ GatherPhotonsResult gatherPhotons(RenderContext context, PhotonMap& photonMap, c
     rayhit = rayhit2;
     ray = ray2;
   }
-  
+
   return result;
 }
 
@@ -404,35 +401,35 @@ struct PathTraceWithCausticsMapResult
   int M = 0;
   bool specularLightPath = false;
 };
-PathTraceWithCausticsMapResult pathTraceWithCausticsMap(RenderContext context, PhotonMap& photonMap, LightRayInfo& lightRay, const Ray& ray, RayHit *rayhitPtr, Vec3f& normal, Vec3f& albedo, float &radius, int depth)
+PathTraceWithCausticsMapResult pathTraceWithCausticsMap(RenderContext context, PhotonMap& photonMap, LightRayInfo& lightRay, const Ray& ray, RayHit* rayhitPtr, Vec3f& normal, Vec3f& albedo, float& radius, int depth)
 {
   PathTraceWithCausticsMapResult result;
 
-  if (depth >= context.renderSettings.maxDepth) return result;
-  
+  if(depth >= context.renderSettings.maxDepth) return result;
+
   RayHit rayhitLocal;
   RayHit& rayhit = rayhitPtr == nullptr ? rayhitLocal : *rayhitPtr;
-  if (rayhitPtr == nullptr) context.scene.rayHit(ray, rayhit);
+  if(rayhitPtr == nullptr) context.scene.rayHit(ray, rayhit);
 
   PhotonSearchResult photons;
 
-  if (hasHitSurface(rayhit))
+  if(hasHitSurface(rayhit))
   {
-    if (depth == 0)
+    if(depth == 0)
     {
       normal = rayhit.interaction.normalShadingDefault;
       albedo = context.scene.getAlbedo(rayhit.interaction);
     }
 
     Vec3f throughput = beersLaw(lightRay.getTransmittance(), norm(rayhit.interaction.x - ray.origin()));
-    
-    if (context.scene.isSurfaceLight(rayhit))
+
+    if(context.scene.isSurfaceLight(rayhit))
     {
       result.LLight += cwiseProd(throughput, context.scene.getEmissionRadiance(-ray.direction(), rayhit));
       return result;
     }
 
-    if (context.scene.hasBRDFDiffuseLobe(rayhit))
+    if(context.scene.hasBRDFDiffuseLobe(rayhit))
     {
       PhotonFluxEstimate estimate = photonMapFluxEstimate(context, photonMap, photons, ray, rayhit, radius);
       result.M += estimate.M;
@@ -446,9 +443,9 @@ PathTraceWithCausticsMapResult pathTraceWithCausticsMap(RenderContext context, P
 
     // https://www.pbr-book.org/3ed-2018/Monte_Carlo_Integration/Russian_Roulette_and_Splitting#
     float rouletteQ = 0.0f;
-    if (depth >= context.renderSettings.roulleteStartDepth) rouletteQ = context.renderSettings.rouletteQ;
+    if(depth >= context.renderSettings.roulleteStartDepth) rouletteQ = context.renderSettings.rouletteQ;
 
-    if (uniform01f(context.rng) <= rouletteQ)
+    if(uniform01f(context.rng) <= rouletteQ)
     {
       return result;
     }
@@ -456,24 +453,23 @@ PathTraceWithCausticsMapResult pathTraceWithCausticsMap(RenderContext context, P
 
     Vec3f estimator = Vec3f::Zero();
 
-    for (int strategy = 0; strategy < numStrategies; strategy++)
+    for(int strategy = 0; strategy < numStrategies; strategy++)
     {
       MISSampleResult sampleResult = strategies.sample(context, lightRay, ray, rayhit, strategy);
       Vec3f throughputWavelength = Vec3f::Ones();
-      sampleResult.lightRay.applyWavelength(throughputWavelength);
 
       pdfs[strategy] = sampleResult.pdfOmega;
 
-      if (sampleResult.throughput() == Vec3f::Zero() || isSelfIntersection(rayhit, sampleResult.rayhit)) continue;
+      if(sampleResult.throughput() == Vec3f::Zero() || isSelfIntersection(rayhit, sampleResult.rayhit)) continue;
 
-      for (int j = 0; j < numStrategies; j++)
+      for(int j = 0; j < numStrategies; j++)
       {
-        if (j != strategy) pdfs[j] = strategies.evalPDF(context, rayhit, sampleResult.lightRay , -ray.direction(), j, sampleResult.ray, sampleResult.rayhit);
+        if(j != strategy) pdfs[j] = strategies.evalPDF(context, rayhit, sampleResult.lightRay, -ray.direction(), j, sampleResult.ray, sampleResult.rayhit);
       }
       float msiWeight = computeMsiWeightPowerHeuristic<beta>(strategy, pdfs);
-      
+
       sampleResult.lightRay.updateMedia(context, rayhit, sampleResult.ray.direction());
-      
+
       assertFinite(throughput);
       assertFinite(sampleResult.throughputDiffuse);
       assertFinite(sampleResult.throughputConcentrated);
@@ -488,7 +484,7 @@ PathTraceWithCausticsMapResult pathTraceWithCausticsMap(RenderContext context, P
       result.LSpecular += cwiseProd(rs.LLight + rs.LSpecular, throughputConcentratedT);
       result.LCaustic += cwiseProd(rs.LSpecular, throughputDiffuseT);
       //result.LRest += (rs.LRest + rs.LCaustic).cwiseProd(throughput2) + rs.LLight.cwiseProd(throughputDiffuseT);
-      result.LRest += cwiseProd(rs.LRest , throughput2) + cwiseProd(rs.LLight, throughputDiffuseT);
+      result.LRest += cwiseProd(rs.LRest, throughput2) + cwiseProd(rs.LLight, throughputDiffuseT);
       result.photonFlux += cwiseProd(rs.photonFlux, throughput2);
       result.M += rs.M;
     }
@@ -509,7 +505,7 @@ float computeNewRadius(float radius1, int sampleIdx)
 {
   float alpha = 0.5f;
   float scale = 1.0f;
-  for (int j = 0; j < sampleIdx; j++)
+  for(int j = 0; j < sampleIdx; j++)
   {
     scale *= (j + alpha) / (j + 1.0f);
   }
@@ -526,9 +522,9 @@ float computeNewRadius(float radius1, int sampleIdx)
 float computeCellSize(const Image1f& radii)
 {
   float sum = 0.0f;
-  for (uint32_t i = 0; i < radii.getWidth(); i++)
+  for(uint32_t i = 0; i < radii.getWidth(); i++)
   {
-    for (uint32_t j = 0; j < radii.getHeight(); j++)
+    for(uint32_t j = 0; j < radii.getHeight(); j++)
     {
       sum += radii(i, j);
     }
@@ -536,12 +532,13 @@ float computeCellSize(const Image1f& radii)
   float a = 5.0f;
   float density = 1e5;
   float cellSize = sum / (radii.getWidth() * radii.getHeight());
-  auto computeCost = [&radii, density, a](float cs) {
+  auto computeCost = [&radii, density, a](float cs)
+  {
 
     float sum = 0.0f;
-    for (uint32_t i = 0; i < radii.getWidth(); i++)
+    for(uint32_t i = 0; i < radii.getWidth(); i++)
     {
-      for (uint32_t j = 0; j < radii.getHeight(); j++)
+      for(uint32_t j = 0; j < radii.getHeight(); j++)
       {
         sum += a * powci<3>(radii(i, j) / cs) + powci<3>(std::max(radii(i, j), cs)) * density;
       }
@@ -549,31 +546,31 @@ float computeCellSize(const Image1f& radii)
     return sum;
   };
   float cost = computeCost(cellSize);
-  for (int j = 0; j < 10; j++)
+  for(int j = 0; j < 10; j++)
   {
     bool changed = false;
     float trial = cellSize * 1.5f;
     float trialCost = computeCost(trial);
-    if (trialCost < cost)
+    if(trialCost < cost)
     {
       cellSize = trial;
       cost = trialCost;
       changed = true;
     }
-    if (!changed) break;
+    if(!changed) break;
   }
-  for (int j = 0; j < 10; j++)
+  for(int j = 0; j < 10; j++)
   {
     bool changed = false;
     float trial = cellSize * 0.6666f;
     float trialCost = computeCost(trial);
-    if (trialCost < cost)
+    if(trialCost < cost)
     {
       cellSize = trial;
       cost = trialCost;
       changed = true;
     }
-    if (!changed) break;
+    if(!changed) break;
   }
   return cellSize;
 }
@@ -581,13 +578,13 @@ float computeCellSize(const Image1f& radii)
 float computeRadiusPixelFootPrint(RenderContext context, float defaultR, int i, int j, int width, int height, bool ignoreCosineTerm)
 {
   assert(ignoreCosineTerm);
-  
+
   Vec2f p0(i, j);
   Vec2f offset(0.5f, 0.5f);
   Ray ray = context.scene.camera.computeRay(context.rng, p0 + offset, float(width), float(height));
   RayHit rayhit;
   context.scene.rayHit(ray, rayhit);
-  if (!hasHitSurface(rayhit))
+  if(!hasHitSurface(rayhit))
   {
     return defaultR;
   }
@@ -595,11 +592,11 @@ float computeRadiusPixelFootPrint(RenderContext context, float defaultR, int i, 
   float theta = std::abs(std::acos(-dot(ray.direction(), rayhit.interaction.normalGeometric)));
   float d = norm(context.scene.camera.getPosition() - rayhit.interaction.x);
 
-  if (!context.scene.hasBRDFDiffuseLobe(rayhit)) // if we hit purely specular surface, we should track down a diffuse surface...
+  if(!context.scene.hasBRDFDiffuseLobe(rayhit)) // if we hit purely specular surface, we should track down a diffuse surface...
   {
-    for (int i = 0; i < context.renderSettings.maxDepth; i++)
+    for(int i = 0; i < context.renderSettings.maxDepth; i++)
     {
-      if (context.scene.hasBRDFDiffuseLobe(rayhit)) // if we hit purely specular surface, we should track down a diffuse surface...
+      if(context.scene.hasBRDFDiffuseLobe(rayhit)) // if we hit purely specular surface, we should track down a diffuse surface...
       {
         break;
       }
@@ -612,14 +609,14 @@ float computeRadiusPixelFootPrint(RenderContext context, float defaultR, int i, 
       {
         sampleResult = context.scene.sampleBRDFConcentrated(context, LightRayInfo(), rayhit, adjoint);
         tries += 1;
-      } while (sampleResult.throughputConcentrated == Vec3f::Zero() && tries < 3);
-      if (sampleResult.throughputConcentrated == Vec3f::Zero()) break;
+      } while(sampleResult.throughputConcentrated == Vec3f::Zero() && tries < 3);
+      if(sampleResult.throughputConcentrated == Vec3f::Zero()) break;
 
       Ray ray2 = context.scene.constructRay(rayhit.interaction, sampleResult.direction, sampleResult.outside);
       RayHit rayhit2;
       context.scene.rayHit(ray2, rayhit2);
-      
-      if (!hasHitSurface(rayhit2) || isSelfIntersection(rayhit, rayhit2))
+
+      if(!hasHitSurface(rayhit2) || isSelfIntersection(rayhit, rayhit2))
       {
         return defaultR;
       }
@@ -656,20 +653,20 @@ float computeRadiusPixelFootPrint(RenderContext context, float defaultR, int i, 
 float getCloseNonNegative(const Image1f& image, int i, int j)
 {
   int k = 1;
-  while (k < std::max(image.getHeight(), image.getWidth()))
+  while(k < std::max(image.getHeight(), image.getWidth()))
   {
-    for (int m = 0; m <= k * 2; m++)
+    for(int m = 0; m <= k * 2; m++)
     {
       int i2, j2;
       i2 = i - k;
       j2 = j - k + m;
-      if (image.inside(i2, j2) && image(i2, j2) > 0.0f) return image(i2, j2);
+      if(image.inside(i2, j2) && image(i2, j2) > 0.0f) return image(i2, j2);
       i2 = i - k + m;
       j2 = j - k;
-      if (image.inside(i2, j2) && image(i2, j2) > 0.0f) return image(i2, j2);
+      if(image.inside(i2, j2) && image(i2, j2) > 0.0f) return image(i2, j2);
       i2 = i + k;
       j2 = j - k + m;
-      if (image.inside(i2, j2) && image(i2, j2) > 0.0f) return image(i2, j2);
+      if(image.inside(i2, j2) && image(i2, j2) > 0.0f) return image(i2, j2);
       i2 = i - k + m;
       j2 = j + k;
     }
@@ -685,19 +682,19 @@ Image1f computeInitialRadii(RenderContext context, std::size_t width, std::size_
   Image1f radii;
   radii.setConstant(width, height, -1.0f);
 
-  for (uint32_t j = 0; j < height; j++)
+  for(uint32_t j = 0; j < height; j++)
   {
-    for (uint32_t i = 0; i < width; i++)
+    for(uint32_t i = 0; i < width; i++)
     {
       bool ignoreCosineTerm = true;
       radii(i, j) = footprintScale * computeRadiusPixelFootPrint(context, -1.0f, i, j, width, height, ignoreCosineTerm);
     }
   }
-  for (uint32_t j = 0; j < height; j++)
+  for(uint32_t j = 0; j < height; j++)
   {
-    for (uint32_t i = 0; i < width; i++)
+    for(uint32_t i = 0; i < width; i++)
     {
-      if (radii(i, j) < 0.0f)
+      if(radii(i, j) < 0.0f)
       {
         float r = getCloseNonNegative(radii, i, j);
         radii(i, j) = r;
@@ -707,16 +704,16 @@ Image1f computeInitialRadii(RenderContext context, std::size_t width, std::size_
   return radii;
 }
 
-Image1f computeInitialRadiiTrace(RenderContext context, PMRenderJob& job, PhotonMap &photonMap, int tracethreshold, bool causticsMap)
+Image1f computeInitialRadiiTrace(RenderContext context, PMRenderJob& job, PhotonMap& photonMap, int tracethreshold, bool causticsMap)
 {
   Image1f radii;
   radii.setConstant(job.renderSettings.width, job.renderSettings.height, -1.0f);
   Scene& scene = *job.scene;
-  
+
   photonMap.clear(false, -1.0f);
 
   std::cout << " tracePhoton for radius " << std::endl;
-  for (int i = 0; i <  tracethreshold && photonMap.photonCount() < tracethreshold; i++)
+  for(int i = 0; i < tracethreshold && photonMap.photonCount() < tracethreshold; i++)
   {
     Vec3f flux;
     Ray ray = scene.sampleLightRay(context.rng, flux);
@@ -724,13 +721,13 @@ Image1f computeInitialRadiiTrace(RenderContext context, PMRenderJob& job, Photon
     tracePhoton(context, photonMap, ray, flux, causticsMap);
   }
   photonMap.build();
-  
+
   constexpr int NeighborCount = 25;
-  if (photonMap.photonCount() < NeighborCount)
+  if(photonMap.photonCount() < NeighborCount)
   {
-    for (uint32_t j = 0; j < job.renderSettings.height; j++)
+    for(uint32_t j = 0; j < job.renderSettings.height; j++)
     {
-      for (uint32_t i = 0; i < job.renderSettings.width; i++)
+      for(uint32_t i = 0; i < job.renderSettings.width; i++)
       {
         bool ignoreCosineTerm = true;
         float footprint = computeRadiusPixelFootPrint(context, -1.0f, i, j, job.renderSettings.width, job.renderSettings.height, ignoreCosineTerm);
@@ -740,31 +737,31 @@ Image1f computeInitialRadiiTrace(RenderContext context, PMRenderJob& job, Photon
   }
   else
   {
-    for (uint32_t j = 0; j < job.renderSettings.height; j++)
+    for(uint32_t j = 0; j < job.renderSettings.height; j++)
     {
-      for (uint32_t i = 0; i < job.renderSettings.width; i++)
+      for(uint32_t i = 0; i < job.renderSettings.width; i++)
       {
         Vec2f p0(i, j);
         Vec2f offset(0.5f, 0.5f);
         Ray ray = context.scene.camera.computeRay(context.rng, p0 + offset, float(job.renderSettings.width), float(job.renderSettings.height));
         RayHit rayhit;
         context.scene.rayHit(ray, rayhit);
-        if (!hasHitSurface(rayhit))
+        if(!hasHitSurface(rayhit))
         {
           continue;
         }
-        
+
         bool ignoreCosineTerm = true;
         float footprint = computeRadiusPixelFootPrint(context, -1.0f, i, j, job.renderSettings.width, job.renderSettings.height, ignoreCosineTerm);
-        radii(i, j) = std::min(50.0f * footprint,  std::max( footprint, photonMap.nnearestNeighborDistance<NeighborCount>(rayhit.interaction.x)) );
+        radii(i, j) = std::min(50.0f * footprint, std::max(footprint, photonMap.nnearestNeighborDistance<NeighborCount>(rayhit.interaction.x)));
       }
     }
   }
-  for (uint32_t j = 0; j < job.renderSettings.height; j++)
+  for(uint32_t j = 0; j < job.renderSettings.height; j++)
   {
-    for (uint32_t i = 0; i < job.renderSettings.width; i++)
+    for(uint32_t i = 0; i < job.renderSettings.width; i++)
     {
-      if (radii(i, j) < 0.0f)
+      if(radii(i, j) < 0.0f)
       {
         float r = getCloseNonNegative(radii, i, j);
         radii(i, j) = r;
@@ -777,9 +774,9 @@ Image1f computeInitialRadiiTrace(RenderContext context, PMRenderJob& job, Photon
 float computeAvg(const Image1f& r)
 {
   float sum = 0.0f;
-  for (int j = 0; j < r.getHeight(); j++)
+  for(int j = 0; j < r.getHeight(); j++)
   {
-    for (int i = 0; i < r.getWidth(); i++)
+    for(int i = 0; i < r.getWidth(); i++)
     {
       sum += r(i, j);
     }
@@ -797,7 +794,7 @@ void PMRenderJob::loadJSON(std::filesystem::path jsonFilepath)
   this->scene = std::make_unique<Scene>(scenePath);
 
   pixels.clear();
-  for (int i = 0; i < renderSettings.width * renderSettings.height; i++) pixels.emplace_back();
+  for(int i = 0; i < renderSettings.width * renderSettings.height; i++) pixels.emplace_back();
   pixelsWidth = renderSettings.width;
 }
 
@@ -848,7 +845,7 @@ void renderPhotonThread(Image3fAccDoubleBuffer& colorBuffer, Image3fAccDoubleBuf
   std::cout << " end " << std::endl;
 
   RenderJobSample sample = job.fetchSample();
-  while (!job.stopFlag && sample.idx < job.renderSettings.numSamples)
+  while(!job.stopFlag && sample.idx < job.renderSettings.numSamples)
   {
     std::cout << " sampleIdx " << sample.idx << " numSamples " << colorBuffer.getWriteBuffer().numSamples << '\n';
 
@@ -857,11 +854,11 @@ void renderPhotonThread(Image3fAccDoubleBuffer& colorBuffer, Image3fAccDoubleBuf
     HighResTimer timer;
     photonMap.clear(true, cellSize);
 
-    if (scene.hasSurfaceLight())
+    if(scene.hasSurfaceLight())
     {
       std::cout << " tracePhoton " << std::endl;
       Vec3f totalFlux = Vec3f::Zero();
-      for (int i = 0; i < tracethreshold && photonMap.photonCount() < countThreshold; i++)
+      for(int i = 0; i < tracethreshold && photonMap.photonCount() < countThreshold; i++)
       {
         Vec3f flux;
         Ray ray = scene.sampleLightRay(rng, flux);
@@ -876,9 +873,9 @@ void renderPhotonThread(Image3fAccDoubleBuffer& colorBuffer, Image3fAccDoubleBuf
     std::cout << " photonmap size " << photonMap.photonCount() << std::endl;
 
     HighResTimer timer2;
-    for (uint32_t j = 0; j < job.renderSettings.height; j++)
+    for(uint32_t j = 0; j < job.renderSettings.height; j++)
     {
-      for (uint32_t i = 0; i < job.renderSettings.width; i++)
+      for(uint32_t i = 0; i < job.renderSettings.width; i++)
       {
         Vec2f p0 = Vec2f(float(i), float(j));
         Ray ray = scene.camera.computeRay(rng, p0 + sample.offset, float(job.renderSettings.width), float(job.renderSettings.height));
@@ -887,19 +884,19 @@ void renderPhotonThread(Image3fAccDoubleBuffer& colorBuffer, Image3fAccDoubleBuf
         LightRayInfo lightRay;
 
         PathTraceWithCausticsMapResult photonsResult = pathTraceWithCausticsMap(context, photonMap, lightRay, ray, nullptr, normal, albedo, radius, 0);
-        if (photonsResult.photonFlux != photonsResult.photonFlux)
+        if(photonsResult.photonFlux != photonsResult.photonFlux)
         {
           std::cout << " error: flux is NAN " << i << ' ' << j << std::endl;
         }
         Vec3f L = photonsResult.LLight + photonsResult.LRest + photonsResult.LSpecular;
-        if (L != L)
+        if(L != L)
         {
           std::cout << " error: L is NAN " << i << ' ' << j << std::endl;
         }
 
         assertFinite(photonsResult.photonFlux);
         Vec3f Lnew;
-        if (L != L || photonsResult.photonFlux != photonsResult.photonFlux)
+        if(L != L || photonsResult.photonFlux != photonsResult.photonFlux)
         {
           Lnew = job.unlock(i, j);
         }

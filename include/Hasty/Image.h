@@ -55,7 +55,7 @@ class Image
 public:
   typedef _PixelType PixelType;
 
-  Image(){}
+  Image() {}
   Image(std::size_t width, std::size_t height)
   {
     resize(width, height);
@@ -96,7 +96,8 @@ public:
   {
     return m_data.size();
   }
-  std::size_t byteCount() const {
+  std::size_t byteCount() const
+  {
     return m_data.size() * sizeof(PixelType);
   }
 
@@ -120,7 +121,7 @@ public:
   {
     assert(m_width == image2.m_width);
     assert(m_height == image2.m_height);
-    for (int i = 0; i < m_width * m_height; i++)
+    for(int i = 0; i < m_width * m_height; i++)
     {
       m_data[i] += image2.m_data[i];
     }
@@ -128,7 +129,7 @@ public:
   }
   Image& operator*=(float s)
   {
-    for (int i = 0; i < m_width * m_height; i++)
+    for(int i = 0; i < m_width * m_height; i++)
     {
       m_data[i] *= s;
     }
@@ -136,7 +137,7 @@ public:
   }
   Image& operator/=(float s)
   {
-    for (int i = 0; i < m_width * m_height; i++)
+    for(int i = 0; i < m_width * m_height; i++)
     {
       m_data[i] /= s;
     }
@@ -162,7 +163,7 @@ protected:
 
 
 template<int W, int H, typename _PixelType>
-Image<_PixelType> runSmallFilter(const Image<_PixelType> &image, const std::array<float, W * H>& kernel)
+Image<_PixelType> runSmallFilter(const Image<_PixelType>& image, const std::array<float, W* H>& kernel)
 {
   static_assert(W % 2 == 1);
   static_assert(H % 2 == 1);
@@ -171,20 +172,20 @@ Image<_PixelType> runSmallFilter(const Image<_PixelType> &image, const std::arra
   assert(W < width);
   assert(H < height);
   Image<_PixelType> result(width, height);
-  for (int y = 0; y < height; y++)
+  for(int y = 0; y < height; y++)
   {
-    for (int x = 0; x < width; x++)
+    for(int x = 0; x < width; x++)
     {
       _PixelType pi = zero<_PixelType>();
-      for (int j = 0; j < H; j++)
+      for(int j = 0; j < H; j++)
       {
-        for (int i = 0; i < W; i++)
+        for(int i = 0; i < W; i++)
         {
           int i2 = x + i - W / 2;
           int j2 = y + j - H / 2;
           // apply "boundary" condition
-          int i3 = i2 < 0 ? 0 : ( i2 >= width ? width - 1 : i2 );
-          int j3 = j2 < 0 ? 0 : ( j2 >= height ? height - 1 : j2 );
+          int i3 = i2 < 0 ? 0 : (i2 >= width ? width - 1 : i2);
+          int j3 = j2 < 0 ? 0 : (j2 >= height ? height - 1 : j2);
           pi += kernel[j * W + i] * image(i3, j3);
         }
       }
@@ -195,15 +196,18 @@ Image<_PixelType> runSmallFilter(const Image<_PixelType> &image, const std::arra
 }
 
 template<typename _PixelType>
-struct PixelTypeTraits {
+struct PixelTypeTraits
+{
 
 };
 template<>
-struct PixelTypeTraits < float > {
+struct PixelTypeTraits < float >
+{
   using ScalarType = float;
 };
 template<>
-struct PixelTypeTraits<Vec3f> {
+struct PixelTypeTraits<Vec3f>
+{
   using ScalarType = float;
 };
 
@@ -213,9 +217,9 @@ Image<_PixelTypeOut> transform(const Image<_PixelTypeIn>& image, Functor f)
   std::size_t width = image.getWidth();
   std::size_t height = image.getHeight();
   Image<_PixelTypeOut> result(width, height);
-  for (int y = 0; y < height; y++)
+  for(int y = 0; y < height; y++)
   {
-    for (int x = 0; x < width; x++)
+    for(int x = 0; x < width; x++)
     {
       const _PixelTypeIn& p = image(x, y);
       result(x, y) = f(x, y, p);
@@ -228,9 +232,9 @@ Image<_PixelTypeIn> transformInplace(Image<_PixelTypeIn>& image, Functor f)
 {
   std::size_t width = image.getWidth();
   std::size_t height = image.getHeight();
-  for (int y = 0; y < height; y++)
+  for(int y = 0; y < height; y++)
   {
-    for (int x = 0; x < width; x++)
+    for(int x = 0; x < width; x++)
     {
       const _PixelTypeIn& p = image(x, y);
       image(x, y) = f(x, y, p);
@@ -245,26 +249,26 @@ Image<_PixelTypeIn>& operator/=(Image<_PixelTypeIn>& image, typename PixelTypeTr
 }
 
 template<typename _PixelTypeIn>
-const _PixelTypeIn* begin(const Image<_PixelTypeIn> &image)
+const _PixelTypeIn* begin(const Image<_PixelTypeIn>& image)
 {
   const _PixelTypeIn* b = image.data();
   return b;
 }
 template<typename _PixelTypeIn>
-const _PixelTypeIn* end(const Image<_PixelTypeIn> &image)
+const _PixelTypeIn* end(const Image<_PixelTypeIn>& image)
 {
   const _PixelTypeIn* b = image.data();
   const _PixelTypeIn* e = b + image.getHeight() * image.getWidth();
   return e;
 }
 template<typename _PixelTypeIn>
-_PixelTypeIn* begin(Image<_PixelTypeIn> &image)
+_PixelTypeIn* begin(Image<_PixelTypeIn>& image)
 {
   _PixelTypeIn* b = image.data();
   return b;
 }
 template<typename _PixelTypeIn>
-_PixelTypeIn* end(Image<_PixelTypeIn> &image)
+_PixelTypeIn* end(Image<_PixelTypeIn>& image)
 {
   _PixelTypeIn* b = image.data();
   _PixelTypeIn* e = b + image.getHeight() * image.getWidth();
@@ -313,7 +317,7 @@ typedef DoubleBuffer<AccumulationBuffer<Vec4f> > Image4fAccDoubleBuffer;
 
 
 template<typename PixelType>
-void clampAndPowInplace(Image<PixelType> & image, float low, float high, float exponent)
+void clampAndPowInplace(Image<PixelType>& image, float low, float high, float exponent)
 {
   transformInplace(image, [low, high, exponent](int x, int y, const PixelType& p)
     {

@@ -5,21 +5,19 @@
 namespace Hasty
 {
 
-
 Image3f flipUpDown(const Image3f& image)
 {
   Image3f subImage;
   subImage.resize(image.getWidth(), image.getHeight());
-  for (int i = 0; i < image.getHeight(); i++)
+  for(int i = 0; i < image.getHeight(); i++)
   {
-    for (int j = 0; j < image.getWidth(); j++)
+    for(int j = 0; j < image.getWidth(); j++)
     {
       subImage(j, image.getHeight() - i - 1) = image(j, i);
     }
   }
   return subImage;
 }
-
 
 bool isLittleEndian()
 {
@@ -33,7 +31,7 @@ void writePFM(const Image1f& image, const std::filesystem::path& filename)
   // https://www.pauldebevec.com/Research/HDR/PFM/
 
   FILE* filestream = fopen(filename.string().c_str(), "wb");
-  if (filestream == NULL)
+  if(filestream == NULL)
   {
     throw std::runtime_error("could not open file " + filename.string() + "for writing!");
   }
@@ -41,7 +39,7 @@ void writePFM(const Image1f& image, const std::filesystem::path& filename)
   fputs("Pf\n", filestream);
   fprintf(filestream, "%d %d\n", (int)image.getWidth(), (int)image.getHeight());
 
-  if (!isLittleEndian())
+  if(!isLittleEndian())
   {
     throw std::runtime_error(filename.string() + " only supporting little endian export ");
   }
@@ -54,7 +52,7 @@ void writePFM(const Image1f& image, const std::filesystem::path& filename)
 void writePFM(const Image3f& image, const std::filesystem::path& filename)
 {
   FILE* filestream = fopen(filename.string().c_str(), "wb");
-  if (filestream == NULL)
+  if(filestream == NULL)
   {
     throw std::runtime_error("could not open file " + filename.string() + "for writing");
   }
@@ -63,7 +61,7 @@ void writePFM(const Image3f& image, const std::filesystem::path& filename)
   fprintf(filestream, "%d %d\n", (int)image.getWidth(), (int)image.getHeight());
 
 
-  if (!isLittleEndian())
+  if(!isLittleEndian())
   {
     throw std::runtime_error(filename.string() + " only supporting little endian export ");
   }
@@ -76,27 +74,27 @@ void writePFM(const Image3f& image, const std::filesystem::path& filename)
 Image1f readImage1f(const std::filesystem::path& filename)
 {
   auto inp = OIIO::ImageInput::open(filename);
-  if (!inp)
+  if(!inp)
   {
     throw std::runtime_error("could not open file " + filename.string() + " for reading");
   }
-  const OIIO::ImageSpec &spec = inp->spec();
+  const OIIO::ImageSpec& spec = inp->spec();
   int width = spec.width;
   int height = spec.height;
   int numChannels = spec.nchannels;
-  if (numChannels != 1)
+  if(numChannels != 1)
   {
     throw std::runtime_error("could not read " + filename.string() + ", wrong number of channels, expected 1, found " + std::to_string(numChannels));
   }
-  
+
   Image1f image;
   image.resize(width, height);
   bool success = inp->read_image(OIIO::TypeDesc::FLOAT, image.data());
-  if (!success)
+  if(!success)
   {
-    throw std::runtime_error("failed to read " + filename.string() );
+    throw std::runtime_error("failed to read " + filename.string());
   }
-  
+
   inp->close();
 
   return image;
@@ -104,33 +102,33 @@ Image1f readImage1f(const std::filesystem::path& filename)
 Image3f readImage3f(const std::filesystem::path& filename)
 {
   auto inp = OIIO::ImageInput::open(filename);
-  if (!inp)
+  if(!inp)
   {
     throw std::runtime_error("could not open file " + filename.string() + " for reading");
   }
-  const OIIO::ImageSpec &spec = inp->spec();
+  const OIIO::ImageSpec& spec = inp->spec();
   int width = spec.width;
   int height = spec.height;
   int numChannels = spec.nchannels;
-  if (numChannels != 3 && numChannels != 4)
+  if(numChannels != 3 && numChannels != 4)
   {
     throw std::runtime_error("could not read " + filename.string() + ", wrong number of channels, expected 3 or 4, found " + std::to_string(numChannels));
   }
 
   std::vector<float> pixels(width * height * numChannels);
   bool success = inp->read_image(OIIO::TypeDesc::FLOAT, pixels.data());
-  if (!success)
+  if(!success)
   {
-    throw std::runtime_error("failed to read " + filename.string() );
+    throw std::runtime_error("failed to read " + filename.string());
   }
-  
+
   Image3f image;
   image.resize(width, height);
   inp->close();
-  
-  for (uint32_t y = 0; y < height; y++)
+
+  for(uint32_t y = 0; y < height; y++)
   {
-    for (uint32_t x = 0; x < width; x++)
+    for(uint32_t x = 0; x < width; x++)
     {
       std::size_t offset = width * numChannels * y + numChannels * x;
       image(x, y) = Vec3f(pixels[offset + 0], pixels[offset + 1], pixels[offset + 2]);
@@ -142,7 +140,7 @@ Image3f readImage3f(const std::filesystem::path& filename)
 void writeEXR(const Image<Vec3f>& image, const std::filesystem::path& filename)
 {
   std::unique_ptr<OIIO::ImageOutput> out = OIIO::ImageOutput::create(filename);
-  if (!out)
+  if(!out)
   {
     throw std::runtime_error("could not open file " + filename.string() + " for writing");
   }
@@ -156,7 +154,7 @@ void writeEXR(const Image<Vec3f>& image, const std::filesystem::path& filename)
 void writeEXR(const Image<Vec4f>& image, const std::filesystem::path& filename)
 {
   std::unique_ptr<OIIO::ImageOutput> out = OIIO::ImageOutput::create(filename);
-  if (!out)
+  if(!out)
   {
     throw std::runtime_error("could not open file " + filename.string() + " for writing");
   }
@@ -167,12 +165,13 @@ void writeEXR(const Image<Vec4f>& image, const std::filesystem::path& filename)
   out->close();
 }
 
-Image4f addAlphaChannel(const Image3f& image) {
+Image4f addAlphaChannel(const Image3f& image)
+{
   Image4f result(image.getWidth(), image.getHeight());
 
-  for (uint32_t y = 0; y < image.getHeight(); y++)
+  for(uint32_t y = 0; y < image.getHeight(); y++)
   {
-    for (uint32_t x = 0; x < image.getWidth(); x++)
+    for(uint32_t x = 0; x < image.getWidth(); x++)
     {
       result(x, y)[0] = image(x, y)[0];
       result(x, y)[1] = image(x, y)[1];
@@ -187,9 +186,9 @@ Image3f removeAlphaChannel(const Image4f& image)
 {
   Image3f subImage;
   subImage.resize(image.getWidth(), image.getHeight());
-  for (uint32_t y = 0; y < image.getHeight(); y++)
+  for(uint32_t y = 0; y < image.getHeight(); y++)
   {
-    for (uint32_t x = 0; x < image.getWidth(); x++)
+    for(uint32_t x = 0; x < image.getWidth(); x++)
     {
       subImage(x, y) = Vec3f(image(x, y)[0], image(x, y)[1], image(x, y)[2]);
     }

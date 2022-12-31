@@ -46,17 +46,17 @@ public:
   {
     auto& pixel = pixels[i + j * pixelsWidth];
     pixel.mutex.lock();
-    if (pixel.radius == -1.0f)
+    if(pixel.radius == -1.0f)
     {
       pixel.radius = defaultRadius;
     }
     return pixel.radius;
   }
-  
+
   Vec3f unlock(int i, int j)
   {
     auto& pixel = pixels[i + j * pixelsWidth];
-    Vec3f result = pixel.LSum /(1e-7f + float(pixel.Nd));
+    Vec3f result = pixel.LSum / (1e-7f + float(pixel.Nd));
     pixel.mutex.unlock();
     return result;
   }
@@ -68,9 +68,9 @@ public:
     pixel.LSum += L;
     pixel.Nd += 1;
     Vec3f Lflux = Vec3f::Zero();
-    if (pixel.radius < 0.0f)
+    if(pixel.radius < 0.0f)
     {
-      if (outRadius < 0.0f)
+      if(outRadius < 0.0f)
       {
         assert(M == 0);
       }
@@ -88,7 +88,7 @@ public:
     {
       float rold = pixel.radius;
       float Ni = pixel.N;
-      if (Ni + M > 0)
+      if(Ni + M > 0)
       {
         pixel.radius *= std::sqrt((Ni + alpha * M) / (Ni + M));
       }
@@ -98,7 +98,7 @@ public:
       Lflux = pixel.Ne == 0 ? Vec3f::Zero() : pixel.flux / (pixel.radius * pixel.radius * float(Pi) * pixel.Ne);
       outRadius = pixel.radius;
     }
-    
+
     Vec3f result = Lflux + pixel.LSum / float(pixel.Nd);
     pixel.mutex.unlock();
     return result;

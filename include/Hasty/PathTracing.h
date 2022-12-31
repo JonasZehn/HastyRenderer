@@ -45,12 +45,12 @@ inline bool isSelfIntersection(const RayHit& rayhit, const RayHit& rayhit2)
 }
 inline Vec3f beersLaw(const Vec3f& transmittance, float d)
 {
-  if (transmittance == Vec3f::Ones()) return Vec3f::Ones(); // hot code path
+  if(transmittance == Vec3f::Ones()) return Vec3f::Ones(); // hot code path
 
   Vec3f result;
   float dRef = 1.0f;
   float invdRef = 1.0f / dRef;
-  for (int i = 0; i < 3; i++)
+  for(int i = 0; i < 3; i++)
   {
     result[i] = transmittance[i] <= 0.0f ? 0.0f : std::pow(transmittance[i], invdRef * d); //  std::exp(std::logf(transmittance[i]) * (invdRef * d))
   }

@@ -11,7 +11,7 @@ template<int betaN, typename T>
 float computeMsiWeightPowerHeuristic(int index, const T& pdfs)
 {
   float s = 0.0f;
-  for (int i = 0; i < pdfs.size(); i++)
+  for(int i = 0; i < pdfs.size(); i++)
   {
     s += powci<betaN>(pdfs[i]);
   }
@@ -73,7 +73,7 @@ public:
   // samples a POINT x2 and computes an according probability density and visibility
   MISSampleResult sample(RenderContext context, const LightRayInfo& lightRay, const Ray& ray, const RayHit& rayhit, int strategy)
   {
-    if (isLightStrategy(strategy))
+    if(isLightStrategy(strategy))
     {
       return lightStrategy.sample(context, lightRay, ray, rayhit);
     }
@@ -86,7 +86,7 @@ public:
 
   float evalPDF(RenderContext context, const RayHit& rayhit, const LightRayInfo& lightRay, const Vec3f& woGlobal, int strategy, const Ray& ray2, const RayHit& rayhit2)
   {
-    if (isLightStrategy(strategy))
+    if(isLightStrategy(strategy))
     {
       return lightStrategy.evalPDF(context, rayhit, woGlobal, ray2, rayhit2);
     }

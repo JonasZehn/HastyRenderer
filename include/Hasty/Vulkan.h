@@ -9,10 +9,13 @@
 #include <string>
 #include <optional>
 
-namespace Hasty {
+namespace Hasty
+{
 
-inline void checkVkResult(VkResult vkResult, const char* name) {
-  if (vkResult != VK_SUCCESS) {
+inline void checkVkResult(VkResult vkResult, const char* name)
+{
+  if(vkResult != VK_SUCCESS)
+  {
     throw std::runtime_error("failed to " + std::string(name) + ", result = " + std::string(string_VkResult(vkResult)));
   }
 }
@@ -20,14 +23,17 @@ inline void checkVkResult(VkResult vkResult, const char* name) {
 #define VK_CHECK_RESULT(x)  {  VkResult _result_name123 = ( x ); checkVkResult(_result_name123, #x);  }
 
 
-inline void printPhysicalDeviceLimits(const VkPhysicalDeviceLimits& limits) {
+inline void printPhysicalDeviceLimits(const VkPhysicalDeviceLimits& limits)
+{
   std::cout << "  .... PRINTING NOT SUPPORTED .... " << '\n';
 }
 
-inline void printPhysicalDeviceSparseProperties(const VkPhysicalDeviceSparseProperties& sparseProperties) {
+inline void printPhysicalDeviceSparseProperties(const VkPhysicalDeviceSparseProperties& sparseProperties)
+{
   std::cout << "  .... PRINTING NOT SUPPORTED .... " << '\n';
 }
-inline void printPhysicalDevice(const VkPhysicalDevice& physicalDevice) {
+inline void printPhysicalDevice(const VkPhysicalDevice& physicalDevice)
+{
   std::cout << " physicalDevice " << physicalDevice << '\n';
 
   VkPhysicalDeviceProperties properties;
@@ -53,7 +59,8 @@ inline void printPhysicalDevice(const VkPhysicalDevice& physicalDevice) {
   std::cout << "  .... " << '\n';
 }
 
-inline void printQueueFamilyProperties(const std::string& name, const VkQueueFamilyProperties& familyProperties) {
+inline void printQueueFamilyProperties(const std::string& name, const VkQueueFamilyProperties& familyProperties)
+{
   std::cout << name << ": \n";
   std::cout << "  queueFlags " << familyProperties.queueFlags << '\n';
   std::cout << "       " << string_VkQueueFlags(familyProperties.queueFlags) << '\n';
@@ -64,19 +71,22 @@ inline void printQueueFamilyProperties(const std::string& name, const VkQueueFam
 
 class VulkanComputeDeviceAndQueue;
 
-class VulkanBuffer {
+class VulkanBuffer
+{
   friend class VulkanComputeDeviceAndQueue;
 public:
   VulkanBuffer(const std::shared_ptr<VulkanComputeDeviceAndQueue>& _deviceAndQueue, std::size_t bufferSize, VkBufferUsageFlags usageFlags, VkMemoryPropertyFlags memoryFlags);
 
   VulkanBuffer(const VulkanBuffer& b) = delete;
-  VulkanBuffer(VulkanBuffer&& b) {
+  VulkanBuffer(VulkanBuffer&& b)
+  {
     *this = std::move(b);
   }
   VulkanBuffer& operator=(const VulkanBuffer& b) = delete;
   VulkanBuffer& operator=(VulkanBuffer&& b);
 
-  ~VulkanBuffer() {
+  ~VulkanBuffer()
+  {
     destroy();
   }
   void destroy();
@@ -93,12 +103,14 @@ private:
   VkDeviceMemory bufferMemory{ nullptr };
 
 };
-class VulkanImage {
+class VulkanImage
+{
   friend class VulkanComputeDeviceAndQueue;
 public:
   VulkanImage(const std::shared_ptr<VulkanComputeDeviceAndQueue>& _deviceAndQueue, uint32_t _width, uint32_t _height, VkFormat _format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties);
   VulkanImage(const VulkanImage& b) = delete;
-  VulkanImage(VulkanImage&& b) {
+  VulkanImage(VulkanImage&& b)
+  {
     *this = std::move(b);
   }
   VulkanImage& operator=(const VulkanImage& b) = delete;
@@ -110,13 +122,16 @@ public:
 
   void destroy();
 
-  VkDescriptorImageInfo& getDescriptor() {
+  VkDescriptorImageInfo& getDescriptor()
+  {
     return descriptor;
   }
-  uint32_t getWidth() const {
+  uint32_t getWidth() const
+  {
     return width;
   }
-  uint32_t getHeight() const {
+  uint32_t getHeight() const
+  {
     return height;
   }
 
@@ -134,16 +149,19 @@ private:
   VkPipelineStageFlags stage;
 };
 
-class VulkanInstance {
+class VulkanInstance
+{
   friend class VulkanComputeDeviceAndQueue;
 public:
-  VulkanInstance() {
+  VulkanInstance()
+  {
 
   }
   VulkanInstance(const VulkanInstance& b) = delete;
   VulkanInstance& operator=(const VulkanInstance& b) = delete;
 
-  ~VulkanInstance() {
+  ~VulkanInstance()
+  {
     destroy();
   }
 
@@ -154,16 +172,19 @@ private:
   VkInstance rawInstance{ nullptr };
 };
 
-class VulkanFence {
+class VulkanFence
+{
 public:
   VulkanFence(const std::shared_ptr<VulkanComputeDeviceAndQueue>& _deviceAndQueue);
   VulkanFence(const VulkanFence& b) = delete;
-  VulkanFence(VulkanFence&& b) {
+  VulkanFence(VulkanFence&& b)
+  {
     *this = std::move(b);
   }
   VulkanFence& operator=(const VulkanFence& b) = delete;
   VulkanFence& operator=(VulkanFence&& b);
-  ~VulkanFence() {
+  ~VulkanFence()
+  {
     destroy();
   }
 
@@ -175,22 +196,26 @@ private:
   VkFence fence;
 };
 
-class VulkanComputeDeviceAndQueue {
+class VulkanComputeDeviceAndQueue
+{
   friend class VulkanBuffer;
   friend class VulkanImage;
   friend class VulkanShaderModule;
 public:
-  VulkanComputeDeviceAndQueue() {
+  VulkanComputeDeviceAndQueue()
+  {
 
   }
   VulkanComputeDeviceAndQueue(const VulkanComputeDeviceAndQueue& b) = delete;
   VulkanComputeDeviceAndQueue& operator=(const VulkanComputeDeviceAndQueue& b) = delete;
 
-  ~VulkanComputeDeviceAndQueue() {
+  ~VulkanComputeDeviceAndQueue()
+  {
     destroy();
   }
 
-  void init(VulkanInstance& instance) {
+  void init(VulkanInstance& instance)
+  {
     assert(physicalDevice == nullptr);
 
     uint32_t deviceCount = 0;
@@ -199,18 +224,22 @@ public:
     std::vector<VkPhysicalDevice> physicalDevices(deviceCount);
     VK_CHECK_RESULT(vkEnumeratePhysicalDevices(instance.rawInstance, &deviceCount, physicalDevices.data()));
 
-    for (auto availablePhysicalDevice : physicalDevices) {
+    for(auto availablePhysicalDevice : physicalDevices)
+    {
       VkPhysicalDeviceProperties properties;
       vkGetPhysicalDeviceProperties(availablePhysicalDevice, &properties);
-      if (properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
+      if(properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+      {
         physicalDevice = availablePhysicalDevice;
       }
     }
-    for (auto availablePhysicalDevice : physicalDevices) {
-      if (availablePhysicalDevice == physicalDevice) std::cout << "*";
+    for(auto availablePhysicalDevice : physicalDevices)
+    {
+      if(availablePhysicalDevice == physicalDevice) std::cout << "*";
       printPhysicalDevice(availablePhysicalDevice);
     }
-    if (physicalDevice == nullptr) {
+    if(physicalDevice == nullptr)
+    {
       throw std::runtime_error("no suitable gpu found");
     }
 
@@ -227,18 +256,22 @@ public:
 
     std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
     vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamilies.data());
-    for (uint32_t index = 0; index < queueFamilies.size(); index++) {
-      if ((queueFamilies[index].queueFlags & VK_QUEUE_COMPUTE_BIT) != 0) {
+    for(uint32_t index = 0; index < queueFamilies.size(); index++)
+    {
+      if((queueFamilies[index].queueFlags & VK_QUEUE_COMPUTE_BIT) != 0)
+      {
         computeQueueFamilyIndex = index;
         break;
       }
     }
-    for (uint32_t index = 0; index < queueFamilies.size(); index++) {
-      if (index == computeQueueFamilyIndex) std::cout << "*";
+    for(uint32_t index = 0; index < queueFamilies.size(); index++)
+    {
+      if(index == computeQueueFamilyIndex) std::cout << "*";
       printQueueFamilyProperties("queue " + std::to_string(index), queueFamilies[index]);
     }
 
-    if (computeQueueFamilyIndex >= queueFamilyCount) {
+    if(computeQueueFamilyIndex >= queueFamilyCount)
+    {
       throw std::runtime_error("no suitable queue found");
     }
 
@@ -263,19 +296,24 @@ public:
     scalarBlockLayoutFeatures.pNext = &descriptorIndexingFeatures;
     vkGetPhysicalDeviceFeatures2(physicalDevice, &features2);
 
-    if (bufferDeviceAddressFeature.bufferDeviceAddress == VK_FALSE) {
+    if(bufferDeviceAddressFeature.bufferDeviceAddress == VK_FALSE)
+    {
       throw std::runtime_error("gpu does not support required feature: bufferDeviceAddress");
     }
-    if (rayQueryFeatures.rayQuery == VK_FALSE) {
+    if(rayQueryFeatures.rayQuery == VK_FALSE)
+    {
       throw std::runtime_error("gpu does not support required feature: rayQuery");
     }
-    if (accelerationStructureFeaturesKHR.accelerationStructure == VK_FALSE) {
+    if(accelerationStructureFeaturesKHR.accelerationStructure == VK_FALSE)
+    {
       throw std::runtime_error("gpu does not support required feature: accelerationStructure");
     }
-    if (scalarBlockLayoutFeatures.scalarBlockLayout == VK_FALSE) {
+    if(scalarBlockLayoutFeatures.scalarBlockLayout == VK_FALSE)
+    {
       throw std::runtime_error("gpu does not support required feature: scalarBlockLayout");
     }
-    if (descriptorIndexingFeatures.runtimeDescriptorArray == VK_FALSE) {
+    if(descriptorIndexingFeatures.runtimeDescriptorArray == VK_FALSE)
+    {
       throw std::runtime_error("gpu does not support required feature: runtimeDescriptorArray");
     }
 
@@ -309,12 +347,16 @@ public:
     vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
   }
 
-  void destroy() {
-    if (logicalDevice != nullptr) {
+  void destroy()
+  {
+    if(logicalDevice != nullptr)
+    {
       VK_CHECK_RESULT(vkDeviceWaitIdle(logicalDevice));
 
-      if (computeCommandPool != nullptr) {
-        for (VkCommandBuffer buffer : submittedSingleTimeCommandBuffer) {
+      if(computeCommandPool != nullptr)
+      {
+        for(VkCommandBuffer buffer : submittedSingleTimeCommandBuffer)
+        {
           vkFreeCommandBuffers(logicalDevice, computeCommandPool, 1, &buffer); //TODO use fences and sometimes clear the list
         }
         submittedSingleTimeCommandBuffer.clear();
@@ -329,11 +371,14 @@ public:
     physicalDevice = nullptr;
   }
 
-  std::optional<uint32_t> getMemoryTypeIndex(uint32_t memoryTypeBits, VkMemoryPropertyFlags properties) {
-    for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; i++) {
+  std::optional<uint32_t> getMemoryTypeIndex(uint32_t memoryTypeBits, VkMemoryPropertyFlags properties)
+  {
+    for(uint32_t i = 0; i < memoryProperties.memoryTypeCount; i++)
+    {
       bool memoryTypeSupportedByDeviceForResource = memoryTypeBits & (1 << i);
       bool memoryTypeHasAllProperties = (memoryProperties.memoryTypes[i].propertyFlags & properties) == properties;
-      if (memoryTypeSupportedByDeviceForResource && memoryTypeHasAllProperties) {
+      if(memoryTypeSupportedByDeviceForResource && memoryTypeHasAllProperties)
+      {
         return i;
       }
     }
@@ -341,7 +386,8 @@ public:
     return std::optional<uint32_t>();
   }
 
-  VkCommandBuffer beginSingleTimeCommandBuffer() {
+  VkCommandBuffer beginSingleTimeCommandBuffer()
+  {
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
@@ -360,7 +406,8 @@ public:
     return commandBuffer;
   }
 
-  void endSingleTimeCommandBuffer(VkCommandBuffer commandBuffer, VkFence fence) {
+  void endSingleTimeCommandBuffer(VkCommandBuffer commandBuffer, VkFence fence)
+  {
     VK_CHECK_RESULT(vkEndCommandBuffer(commandBuffer));
 
     VkSubmitInfo submitInfo{};
@@ -375,7 +422,8 @@ public:
 
   // doing an image layout transition while keeping it on the same queue family
   // see https://github.com/Overv/VulkanTutorial/tree/master/code at the time of writing this the license for the code folder is CC0 1.0 Universal.
-  void transitionImageLayout(VulkanImage& image, VkImageLayout newLayout) {
+  void transitionImageLayout(VulkanImage& image, VkImageLayout newLayout)
+  {
     VkCommandBuffer commandBuffer = beginSingleTimeCommandBuffer();
 
     VkPipelineStageFlags sourceStage;
@@ -394,39 +442,48 @@ public:
     barrier.subresourceRange.baseArrayLayer = 0;
     barrier.subresourceRange.layerCount = 1;
 
-    if (image.layout == VK_IMAGE_LAYOUT_UNDEFINED) {
+    if(image.layout == VK_IMAGE_LAYOUT_UNDEFINED)
+    {
       barrier.srcAccessMask = 0;
       sourceStage = image.stage;
     }
-    else if (image.layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+    else if(image.layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+    {
       barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
       sourceStage = image.stage;
     }
-    else if (image.layout == VK_IMAGE_LAYOUT_GENERAL) {
+    else if(image.layout == VK_IMAGE_LAYOUT_GENERAL)
+    {
       barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
       sourceStage = image.stage;
     }
-    else {
+    else
+    {
       throw std::invalid_argument("unsupported layout transition!");
     }
 
-    if (newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+    if(newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+    {
       barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
       destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
     }
-    else if (newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+    else if(newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+    {
       barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
       destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
     }
-    else if (newLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
+    else if(newLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+    {
       barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
       destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
     }
-    else if (newLayout == VK_IMAGE_LAYOUT_GENERAL) {
+    else if(newLayout == VK_IMAGE_LAYOUT_GENERAL)
+    {
       barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
       destinationStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
     }
-    else {
+    else
+    {
       throw std::invalid_argument("unsupported layout transition!");
     }
 
@@ -447,7 +504,8 @@ public:
     image.updateDescriptor();
   }
 
-  void copyBufferToImage(VulkanBuffer &buffer, VulkanImage &image) {
+  void copyBufferToImage(VulkanBuffer& buffer, VulkanImage& image)
+  {
     VkCommandBuffer commandBuffer = beginSingleTimeCommandBuffer();
 
     VkBufferImageCopy region{};
@@ -478,7 +536,8 @@ public:
     VkFence fence = VK_NULL_HANDLE;
     endSingleTimeCommandBuffer(commandBuffer, fence);
   }
-  void copyImageToBuffer(VulkanImage& image, VulkanBuffer& buffer, VulkanFence &fence) {
+  void copyImageToBuffer(VulkanImage& image, VulkanBuffer& buffer, VulkanFence& fence)
+  {
     VkCommandBuffer commandBuffer = beginSingleTimeCommandBuffer();
 
     VkBufferImageCopy region{};
@@ -510,35 +569,43 @@ public:
   }
 
 
-  void waitDeviceIdle() {
+  void waitDeviceIdle()
+  {
     vkDeviceWaitIdle(logicalDevice);
   }
-  void waitQueueIdle() {
+  void waitQueueIdle()
+  {
     vkQueueWaitIdle(computeQueue);
   }
-  void waitForFence(VulkanFence &fence) {
+  void waitForFence(VulkanFence& fence)
+  {
     VkFence f = fence.getRaw();
     vkWaitForFences(logicalDevice, 1, &f, VK_TRUE, UINT64_MAX);
   }
 
-  VkQueue& getQueue() {
+  VkQueue& getQueue()
+  {
     return computeQueue;
   }
-  VkPhysicalDevice& getPhysicalDevice() {
+  VkPhysicalDevice& getPhysicalDevice()
+  {
     return physicalDevice;
   }
-  VkDevice& getLogicalDevice() {
+  VkDevice& getLogicalDevice()
+  {
     return logicalDevice;
   }
-  VkCommandPool& getCommandPool() {
+  VkCommandPool& getCommandPool()
+  {
     return computeCommandPool;
   }
 
-  uint32_t getQueueFamilyIndex() {
+  uint32_t getQueueFamilyIndex()
+  {
     return computeQueueFamilyIndex;
   }
 
- private:
+private:
   VkPhysicalDevice physicalDevice{ nullptr };
   VkDevice logicalDevice{ nullptr };
   VkQueue computeQueue{ nullptr };
@@ -548,11 +615,13 @@ public:
   std::vector<VkCommandBuffer> submittedSingleTimeCommandBuffer;
 };
 
-class VulkanShaderModule {
+class VulkanShaderModule
+{
 public:
   VulkanShaderModule() {}
-  
-  void init(const std::shared_ptr<VulkanComputeDeviceAndQueue>& _device, const std::vector<char>& code) {
+
+  void init(const std::shared_ptr<VulkanComputeDeviceAndQueue>& _device, const std::vector<char>& code)
+  {
     assert(shaderModule == nullptr);
 
     deviceAndQueue = _device;
@@ -564,7 +633,8 @@ public:
     createInfo.codeSize = code.size();
     createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
 
-    if (vkCreateShaderModule(logicalDevice, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+    if(vkCreateShaderModule(logicalDevice, &createInfo, nullptr, &shaderModule) != VK_SUCCESS)
+    {
       throw std::runtime_error("failed to create shader module!");
     }
 
@@ -576,11 +646,13 @@ public:
     shaderStageInfo.pName = "main";
   }
   VulkanShaderModule(const VulkanShaderModule& b) = delete;
-  VulkanShaderModule(VulkanShaderModule&& b) {
+  VulkanShaderModule(VulkanShaderModule&& b)
+  {
     *this = std::move(b);
   }
   VulkanShaderModule& operator=(const VulkanShaderModule& b) = delete;
-  VulkanShaderModule& operator=(VulkanShaderModule&& b) {
+  VulkanShaderModule& operator=(VulkanShaderModule&& b)
+  {
     this->deviceAndQueue = b.deviceAndQueue;
     this->shaderModule = b.shaderModule;
     b.deviceAndQueue = nullptr;
@@ -589,15 +661,19 @@ public:
     return *this;
   }
 
-  ~VulkanShaderModule() {
+  ~VulkanShaderModule()
+  {
     destroy();
   }
 
-  void destroy() {
-    if (deviceAndQueue) {
+  void destroy()
+  {
+    if(deviceAndQueue)
+    {
       VkDevice logicalDevice = deviceAndQueue->logicalDevice;
 
-      if (shaderModule != nullptr) {
+      if(shaderModule != nullptr)
+      {
         vkDestroyShaderModule(logicalDevice, shaderModule, nullptr);
         shaderModule = nullptr;
       }
@@ -605,7 +681,8 @@ public:
     }
   }
 
-  VkShaderModule getModule() {
+  VkShaderModule getModule()
+  {
     return shaderModule;
   }
 
@@ -614,11 +691,13 @@ private:
   VkShaderModule shaderModule{ nullptr };
 };
 
-inline VulkanImage allocateDeviceImage(std::shared_ptr<VulkanComputeDeviceAndQueue> deviceAndQueue, VkFormat format, std::size_t texWidth, std::size_t texHeight, VkImageUsageFlags usageFlags) {
+inline VulkanImage allocateDeviceImage(std::shared_ptr<VulkanComputeDeviceAndQueue> deviceAndQueue, VkFormat format, std::size_t texWidth, std::size_t texHeight, VkImageUsageFlags usageFlags)
+{
   return VulkanImage(deviceAndQueue, texWidth, texHeight, format, VK_IMAGE_TILING_OPTIMAL, usageFlags, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 }
 
-inline VkWriteDescriptorSet writeDescriptorSet(VkDescriptorSet descriptorSet, VkDescriptorType descriptorType, uint32_t dstBinding, VkWriteDescriptorSetAccelerationStructureKHR* writeDescriptorSetAccelerationStructureKHR) {
+inline VkWriteDescriptorSet writeDescriptorSet(VkDescriptorSet descriptorSet, VkDescriptorType descriptorType, uint32_t dstBinding, VkWriteDescriptorSetAccelerationStructureKHR* writeDescriptorSetAccelerationStructureKHR)
+{
   VkWriteDescriptorSet result{ VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET };
   result.dstSet = descriptorSet;
   result.descriptorType = descriptorType;

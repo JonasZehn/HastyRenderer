@@ -13,7 +13,7 @@ Vec2f sampleCircularNGonUniformly(HASTY_INOUT(RNG) rng, int numBlades, float bla
 {
   assert(bladeRotation >= float(-Hasty::Pi));
   assert(numBlades >= 3);
-  
+
   // do a half plane test with direction of anglePerSector/2
   float anglePerSector = float(2.0 * Hasty::Pi / numBlades);
   Vec2f normal(std::cos(anglePerSector * 0.5f), std::sin(anglePerSector * 0.5f));
@@ -27,12 +27,12 @@ Vec2f sampleCircularNGonUniformly(HASTY_INOUT(RNG) rng, int numBlades, float bla
     float r = sample.norm();
     float angle = std::atan2(sample[1], sample[0]);
     angle -= bladeRotation;
-    angle += float(2.0 * Hasty::Pi)* (1.0f + std::numeric_limits<float>::epsilon()); // make sure angle is bigger than zero
+    angle += float(2.0 * Hasty::Pi) * (1.0f + std::numeric_limits<float>::epsilon()); // make sure angle is bigger than zero
     // now normalize wrt to angular sector:
     angle = std::fmod(angle, anglePerSector);
     Vec2f normalizedPosition(r * std::cos(angle), r * std::sin(angle));
     outside = (normal.dot(normalizedPosition) + d) > 0.0f;
-  } while (outside);
+  } while(outside);
 
   float areaSector = 0.5 * std::sin(anglePerSector); // Area = 0.5 * radius * radius * sin(anglePerSector)
   float areaNGon = numBlades * areaSector;
@@ -43,11 +43,11 @@ Vec2f sampleCircularNGonUniformly(HASTY_INOUT(RNG) rng, int numBlades, float bla
 Vec3f sampleSphereSurfaceUniformly(HASTY_INOUT(RNG) rng, HASTY_OUT(float) pDensity)
 {
   pDensity = 0.25f * float(InvPi); // 4 pi = Area of sphere with radius 1
-  while (true)
+  while(true)
   {
     Vec3f r(rng.uniformm11f(), rng.uniformm11f(), rng.uniformm11f());
     float rsq = normSq(r);
-    if (rsq <= 1.0 && rsq > 1e-6f)
+    if(rsq <= 1.0 && rsq > 1e-6f)
     {
       return r / std::sqrt(rsq);
     }
@@ -59,13 +59,13 @@ Vec3f sampleSphereSurfaceUniformly(HASTY_INOUT(RNG) rng, HASTY_OUT(float) pDensi
 Vec3f sampleHemisphereSurfaceUniformly(HASTY_INOUT(RNG) rng, const Vec3f& normal, HASTY_OUT(float) pDensity)
 {
   pDensity = 0.5f * float(InvPi); // 2 pi = Area of hemisphere with radius 1
-  while (true)
+  while(true)
   {
     Vec3f r(rng.uniformm11f(), rng.uniformm11f(), rng.uniformm11f());
     float rsq = normSq(r);
-    if (rsq <= 1.0f && rsq > 1e-6f)
+    if(rsq <= 1.0f && rsq > 1e-6f)
     {
-      if (dot(r, normal) >= 0.0f)
+      if(dot(r, normal) >= 0.0f)
       {
         return r / std::sqrt(rsq);
       }
@@ -98,10 +98,10 @@ Vec3f sampleHemisphereCosImportance(HASTY_INOUT(RNG) rng, const Vec3f& normal, H
     Vec3f rv(sintheta * cosphi, sintheta * sinphi, costheta);
 
     RotationBetweenTwoVectors<float, Vec3f> rotation(Vec3f(0.0f, 0.0f, 1.0f), normal);
-    dir = rotation * rv;
+    dir = applyRotation(rotation, rv);
     dir = normalize(dir);
     costheta = dot(dir, normal);
-  } while (costheta <= 0.0f); // stay clear from numerical mistakes
+  } while(costheta <= 0.0f); // stay clear from numerical mistakes
 
   pDensity = float(InvPi) * costheta;
   return dir;
@@ -109,7 +109,8 @@ Vec3f sampleHemisphereCosImportance(HASTY_INOUT(RNG) rng, const Vec3f& normal, H
 float evaluateHemisphereCosImportancePDF(const Vec3f& normal, const Vec3f& direction)
 {
   float cosTheta = dot(normal, direction);
-  if (cosTheta < 0.0f) {
+  if(cosTheta < 0.0f)
+  {
     return 0.0f;
   }
   return float(InvPi) * cosTheta;
@@ -140,10 +141,10 @@ Vec3f sampleCosineLobe(HASTY_INOUT(RNG) rng, const Vec3f& lobeDirection, float e
     Vec3f rv(sintheta * cosphi, sintheta * sinphi, costheta);
 
     RotationBetweenTwoVectors<float, Vec3f> rotation(Vec3f(0.0f, 0.0f, 1.0f), lobeDirection);
-    dir = rotation * rv;
+    dir = applyRotation(rotation, rv);
     dir = normalize(dir);
     costheta = dot(dir, lobeDirection);
-  } while (costheta <= 0.0f); // stay clear from numerical mistakes
+  } while(costheta <= 0.0f); // stay clear from numerical mistakes
 
   pDensity = (exponent + 1.0f) * 0.5f * float(InvPi) * std::pow(costheta, exponent);
   return dir;
@@ -152,7 +153,7 @@ Vec3f sampleCosineLobe(HASTY_INOUT(RNG) rng, const Vec3f& lobeDirection, float e
 float evaluateCosineLobePDF(const Vec3f& lobeDirection, float exponent, const Vec3f& direction)
 {
   float cosTheta = dot(lobeDirection, direction);
-  if (cosTheta < 0.0f) return 0.0f;
+  if(cosTheta < 0.0f) return 0.0f;
   return (exponent + 1.0f) * 0.5f * float(InvPi) * std::pow(cosTheta, exponent);
 }
 

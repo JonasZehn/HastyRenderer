@@ -74,8 +74,8 @@ protected:
   const BXDF& getBXDF(const SurfaceInteraction& interaction) const;
 public:
   MaterialEvalResult evaluteBRDF(const RayHit& hit, const Vec3f& wo, const Vec3f& wi, float indexOfRefractionOutside, bool adjoint, ShaderEvalFlag flags = ShaderEvalFlag::ALL);
-  SampleResult sampleBRDF(RenderContext& context, const LightRayInfo& lightRay, const RayHit& rayhit, bool adjoint);
-  SampleResult sampleBRDFConcentrated(RenderContext& context, const LightRayInfo& lightRay, const RayHit& rayhit, bool adjoint);
+  SampleResult sampleBRDF(RenderContext& context, LightRayInfo& lightRay, const RayHit& rayhit, bool adjoint);
+  SampleResult sampleBRDFConcentrated(RenderContext& context, LightRayInfo& lightRay, const RayHit& rayhit, bool adjoint);
   float evaluateSamplePDF(RenderContext& context, const RayHit& rayhit, const LightRayInfo& lightRay, const Vec3f& direction2);
   bool hasBRDFDiffuseLobe(const RayHit& rayhit);
   float getIORInside(const RayHit& rayhit, int wavelength);
@@ -91,7 +91,8 @@ public:
   const std::vector<float>& getVertices() const;
   std::size_t getTriangleCount(std::size_t geomID) const;
   std::array<int, 3> getTriangleVertexIndices(std::size_t geomID, std::size_t primID) const;
-  std::optional< std::array<Vec2f, 3> > getTriangleUV(std::size_t geomID, std::size_t primID) const {
+  std::optional< std::array<Vec2f, 3> > getTriangleUV(std::size_t geomID, std::size_t primID) const
+  {
     return collectTriangleUV(reader, geomID, primID);
   }
   std::array<Vec3f, 3> collectTriangle(std::size_t geomID, std::size_t primID) const;

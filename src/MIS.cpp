@@ -7,9 +7,10 @@ MISSampleResult BRDFSamplingStrategy::sample(RenderContext context, const LightR
 {
   MISSampleResult result;
 
+  result.lightRay = lightRay;
   bool adjoint = false;
-  SampleResult sampleResult = context.scene.sampleBRDF(context, lightRay, rayhit, adjoint);
-  if (sampleResult.pdfOmega == 0.0f)
+  SampleResult sampleResult = context.scene.sampleBRDF(context, result.lightRay, rayhit, adjoint);
+  if(sampleResult.pdfOmega == 0.0f)
   {
     result.throughputDiffuse = Vec3f::Zero();
     result.throughputConcentrated = Vec3f::Zero();
@@ -17,7 +18,6 @@ MISSampleResult BRDFSamplingStrategy::sample(RenderContext context, const LightR
     return result;
   }
   result.ray = context.scene.constructRay(rayhit.interaction, sampleResult.direction, sampleResult.outside);
-  result.lightRay = sampleResult.lightRay;
   result.throughputDiffuse = sampleResult.throughputDiffuse;
   result.throughputConcentrated = sampleResult.throughputConcentrated;
   result.pdfOmega = sampleResult.pdfOmega;
@@ -36,8 +36,8 @@ MISSampleResult LightSamplingStrategy::sample(RenderContext context, const Light
 
   bool lightVisible;
   result.ray = context.scene.sampleLightRayFromStartPoint(context.rng, rayhit.interaction, result.pdfOmega, result.rayhit, lightVisible);
-  
-  if (!lightVisible || result.pdfOmega == 0.0f)
+
+  if(!lightVisible || result.pdfOmega == 0.0f)
   {
     result.throughputDiffuse = Vec3f::Zero();
     result.throughputConcentrated = Vec3f::Zero();
@@ -59,7 +59,7 @@ float LightSamplingStrategy::evalPDF(RenderContext context, const RayHit& rayhit
 
 SamplingStrategies::SamplingStrategies(RenderContext context)
 {
-  if (context.scene.hasLight() && context.renderSettings.useMIS)
+  if(context.scene.hasLight() && context.renderSettings.useMIS)
   {
     lightStrategyIndex = 0;
     brdfStrategyIndex = 1;

@@ -19,7 +19,7 @@ public:
 
   void setLookAt(const Vec3f& position, const Vec3f& lookAt);
   // x goes to right, y goes to the bottom
-  Ray computeRay(RNG &rng, const Vec2f& p, float frameWidth, float frameHeight);
+  Ray computeRay(RNG& rng, const Vec2f& p, float frameWidth, float frameHeight);
   float computeRayAngle(const Vec2f& p, float frameWidth, float frameHeight);
   const Vec3f& getPosition() const { return m_position; }
   float getFoVSlope() { return std::tan(0.5f * (float(Pi) * m_fovDegree / 180.0f)); }

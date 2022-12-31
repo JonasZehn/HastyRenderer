@@ -6,6 +6,8 @@
 namespace Hasty
 {
 
+#define HASTY_POWCI(v, constantIntegerExponent) powci<constantIntegerExponent>(v);
+
 bool computeRefractionDirection(const Vec3f& wi, const Vec3f& normal, float indexOfRefraction_i, float indexOfRefraction_t, HASTY_OUT(Vec3f) wt)
 {
   // t stands for transmittance
@@ -64,7 +66,7 @@ inline float fresnelSchlick(float cos_i, float indexOfRefraction_i, float indexO
   //https://en.wikipedia.org/wiki/Schlick%27s_approximation
   float R0 = square((indexOfRefraction_i - indexOfRefraction_t) / (indexOfRefraction_i + indexOfRefraction_t));
   float cosT = cos_i;
-  return R0 + (1.0f - R0) * powci<5>(1.0f - cosT);
+  return R0 + (1.0f - R0) * HASTY_POWCI(1.0f - cosT, 5);
 }
 
 // https://www.pbr-book.org/3ed-2018/Reflection_Models/Specular_Reflection_and_Transmission
@@ -108,7 +110,7 @@ Vec3f sampleDGGX(HASTY_INOUT(RNG) rng, const Vec3f& normal, float alpha, const V
     Vec3f rv = Vec3f(sintheta * cosphi, sintheta * sinphi, costheta);
 
     RotationBetweenTwoVectors<float, Vec3f> rotation(Vec3f(0.0f, 0.0f, 1.0f), normal);
-    h = rotation * rv;
+    h = applyRotation(rotation, rv);
     h = normalize(h);
   } while(dot(h, normal) <= 0.0f);
 
@@ -239,53 +241,15 @@ inline float computeNormalScale(const Vec3f& wi, const Vec3f& normalShading, con
   return std::abs(dot(wi, normalShading)) / (1e-7f + std::abs(dot(wi, normalGeometric)));
 }
 
-PrincipledBRDF::PrincipledBRDF(std::unique_ptr<ITextureMap3f> albedo, std::unique_ptr<ITextureMap1f> roughness, std::unique_ptr<ITextureMap1f> metallic, float specular, float indexOfRefraction, std::unique_ptr<ITextureMap3f> normalMap, float anisotropy, float transmission, bool varyIOR)
-  :albedo(std::move(albedo)), roughness(std::move(roughness)), metallic(std::move(metallic)), specular(specular), indexOfRefraction(indexOfRefraction), normalMap(std::move(normalMap)), anisotropy(anisotropy), transmission(transmission), varyIOR(varyIOR)
-{
-}
-PrincipledBRDF::~PrincipledBRDF()
-{
 
-}
-float PrincipledBRDF::getIndexOfRefraction(int wavelength) const
-{
-  if(!varyIOR)
-  {
-    return indexOfRefraction;
-  }
-  switch(wavelength)
-  {
-  case 0: return indexOfRefraction * (1.43f / 1.45f);
-  case 1: return indexOfRefraction * (1.45f / 1.45f);
-  case 2: return indexOfRefraction * (1.47f / 1.45f);
-  default: return std::numeric_limits<float>::signaling_NaN();
-  }
-}
-Vec3f PrincipledBRDF::getShadingNormal(const SurfaceInteraction& interaction, const Vec3f& wo, float dotNgWo)
-{
-  float sideNgWo = signSide(dotNgWo);
-  Vec3f normalShading;
-  // first we make sure we have a normal that points in the same direction wrt wo
-  if(normalMap)
-  {
-    Vec3f color = normalMap->evaluate(interaction);
-    Vec3f texNormal = 2.0f * color - Vec3f::Ones();
-    normalShading = normalize(interaction.tangent * texNormal[0] + interaction.bitangent * texNormal[1] + interaction.normalGeometric * texNormal[2]);
-  }
-  else
-  {
-    normalShading = interaction.normalShadingDefault;
-  }
-  float sideNsWo = signSide(dot(normalShading, wo));
-  if(sideNgWo != sideNsWo)
-  {
-    normalShading = interaction.normalGeometric; // this is not consistent but good enough for the hack called normal map
-  }
-  // here we guarantuee signSide(normalShading, wo) == signSide(interaction.normalGeometric, wo)
-  // but now we flip it according to normalGeometric:
-  normalShading *= sideNgWo;
-  return normalShading;
-}
+// Goal : mix(mix(DielectricBRDF, GlassBRDF,  transmission), metallicBRDF, metallic)
+//   where DielectricBRDF, GlassBRDF and metallicBRDF is a fully working BRDF, and the grouping like this is cause glass is a dielectric...
+// but this can be simplified because we use a simpler model where the specular lobe of the metallic, the dielectric and the "glass"
+// mix(mix(DielectricBRDFDiffuse, GlassBRDFDiffuse,  transmission), metallicBRDFDiffuse, metallic)
+//  = mix(mix(DielectricBRDFDiffuse, 0,  transmission), 0, metallic)
+//  = DielectricBRDFDiffuse * (1.0 - transmission) * (1.0 - metallic)
+//  = Lambertian * (1.0f - 0.5f * specularHit) * (1.0 - transmissionHit) * (1.0 - metallicHit)
+
 float PrincipledBRDF::computeAlpha(float roughness)
 {
   //we have alpha min to not have dirac distribution as special case
@@ -300,7 +264,7 @@ float PrincipledBRDF::computeAlpha(float roughness)
 PrincipledBRDF::ProbabilityResult PrincipledBRDF::computeProbability(float metallicHit, float specularHit, float transmissionHit, float cos_o, float indexOfRefraction_o, float indexOfRefraction_refr_o, ShaderEvalFlag evalFlag)
 {
   assert(cos_o >= 0.0f);
-  ProbabilityResult result;
+  PrincipledBRDF::ProbabilityResult result;
   result.refractionPossible = computeRefractionCosT(cos_o, indexOfRefraction_o, indexOfRefraction_refr_o, result.cosT);
   if(result.refractionPossible)
   {
@@ -347,21 +311,12 @@ void PrincipledBRDF::computeAnisotropyParameters(const SurfaceInteraction& inter
   alpha_t = alpha / aspect;
   alpha_b = alpha * aspect;
   RotationBetweenTwoVectors<float, Vec3f> rotation(interaction.normalGeometric, normalShading);
-  tangent = rotation * interaction.tangent;
-  bitangent = rotation * interaction.bitangent;
+  tangent = applyRotation(rotation, interaction.tangent);
+  bitangent = applyRotation(rotation, interaction.bitangent);
 }
 
-// Goal : mix(mix(DielectricBRDF, GlassBRDF,  transmission), metallicBRDF, metallic)
-//   where DielectricBRDF, GlassBRDF and metallicBRDF is a fully working BRDF, and the grouping like this is cause glass is a dielectric...
-// but this can be simplified because we use a simpler model where the specular lobe of the metallic, the dielectric and the "glass"
-// mix(mix(DielectricBRDFDiffuse, GlassBRDFDiffuse,  transmission), metallicBRDFDiffuse, metallic)
-//  = mix(mix(DielectricBRDFDiffuse, 0,  transmission), 0, metallic)
-//  = DielectricBRDFDiffuse * (1.0 - transmission) * (1.0 - metallic)
-//  = Lambertian * (1.0f - 0.5f * specularHit) * (1.0 - transmissionHit) * (1.0 - metallicHit)
-
-
 // this function assumes that dot(Ns, wo) >= 0
-Vec3f PrincipledBRDFevaluateDiffuse(float dotNsWi, const Vec3f& albedoHit, float normalScale, float metallicHit, float specularHit, float transmissionHit)
+Vec3f PrincipledBRDF::evaluateDiffuse(float dotNsWi, const Vec3f& albedoHit, float normalScale, float metallicHit, float specularHit, float transmissionHit)
 {
   if(dotNsWi < 0.0f)
   {
@@ -370,8 +325,8 @@ Vec3f PrincipledBRDFevaluateDiffuse(float dotNsWi, const Vec3f& albedoHit, float
   return albedoHit * (float(InvPi) * normalScale * (1.0f - 0.5f * specularHit) * (1.0 - transmissionHit) * (1.0 - metallicHit));
 }
 // this function assumes that dot(Ns, wo) >= 0
-Vec3f PrincipledBRDFevaluateConcentratedWithoutTransmission(
-  float dotNsWi, 
+Vec3f PrincipledBRDF::evaluateConcentratedWithoutTransmission(
+  float dotNsWi,
   const Vec3f& albedoHit, float metallicHit, float specularHit,
   float roughnessHit, float anisotropyHit, float transmissionHit,
   const Vec3f& wo, const Vec3f& wi,
@@ -390,7 +345,7 @@ Vec3f PrincipledBRDFevaluateConcentratedWithoutTransmission(
 
   //Pseudo fresnel:
   // https://www.youtube.com/watch?v=kEcDbl7eS0w basically F0 is directly the color one desires in the middle, and it's actually more principled to use F0 + SChlick than using the full fresnel equations because we don't do proper spectral rendering
-  float cosNih5 = powci<5>(1.0f - lh);
+  float cosNih5 = HASTY_POWCI(1.0f - lh, 5);
   // FH * D * G / (4 * nv * nl) with:
   //Vec3f F0 = mix(Vec3f::Ones(), albedoHit, metallicHit); // and we also have a specular part for non metalics, in that case it's kinda white, wheras for a metallic object the light gets "colored"
   //Vec3f FH = F0 + (Vec3f::Ones() - F0) * cosNih5; // here if we are at a grazing angle, we  remove some F0, and add some "achromatic" reflectance (Vec3f::ones)
@@ -438,96 +393,28 @@ Vec3f PrincipledBRDFevaluateConcentratedWithoutTransmission(
   return result;
 }
 
-MaterialEvalResult PrincipledBRDF::evaluate(const SurfaceInteraction& interaction, const Vec3f& wo, const Vec3f& wi, float indexOfRefractionOutside, bool adjoint, ShaderEvalFlag evalFlag)
-{
-  // There are two things to consider: leakage which we are trying to prevent with the statement above
-  // and when wierd situations appear because geometric normal != shading normal
-  //   there are two problematic subcases for the second case: wo is on the "inside" of the shading normal
-  //          and the sampled out direction points into  the geometric normal
-  //  see "Microfacet-based Normal Mapping for Robust Monte Carlo Path Tracing" for an overview
-  // we ignore conservation loses and from the results in the paper and due to simplicity, address the first subcase using flipping , see sec. 3.4
-  // the second subcase we just do a reflection across the normalGeometric surface
-
-  float dotNgWo = dot(interaction.normalGeometric, wo);
-  Vec3f normalShading = getShadingNormal(interaction, wo, dotNgWo);
-  float dotNsWo = dot(normalShading, wo);
-  float dotNsWi = dot(normalShading, wi);
-
-  MaterialEvalResult result = MaterialEvalResult(Vec3f::Zero(), Vec3f::Zero(), normalShading);
-
-  Vec3f albedoHit = albedo->evaluate(interaction);
-  float roughnessHit = roughness->evaluate(interaction);
-  float alpha = computeAlpha(roughnessHit);
-  float metallicHit = metallic->evaluate(interaction);
-  float specularHit = this->specular;
-  float anisotropyHit = this->anisotropy;
-  float transmissionHit = transmission;
-
-  float normalScale = computeNormalScale(wi, normalShading, interaction.normalGeometric);
-
-  if(has(evalFlag, ShaderEvalFlag::DIFFUSE))
-  {
-    result.fDiffuse = PrincipledBRDFevaluateDiffuse(dotNsWi, albedoHit, normalScale, metallicHit, specularHit, transmissionHit); // we use a Lambertian model here to keep it energy conserving
-  }
-
-  if(has(evalFlag, ShaderEvalFlag::CONCENTRATED))
-  {
-    Vec3f FDaccurate = Vec3f::Fill(std::numeric_limits<double>::signaling_NaN()); // not used since we can't hit dirac distribution (TODO change when adding roughness to glass/transmissionHit sub BRDF
-
-    float alpha_t, alpha_b;
-    Vec3f tangent, bitangent;
-    computeAnisotropyParameters(interaction, normalShading, alpha, anisotropyHit, alpha_t, alpha_b, tangent, bitangent);
-
-    result.fConcentrated = PrincipledBRDFevaluateConcentratedWithoutTransmission(
-      dotNsWi,
-      albedoHit, metallicHit, specularHit, roughnessHit, anisotropyHit, transmissionHit,
-      wo, wi, alpha, alpha_t, alpha_b, tangent, bitangent, normalShading,
-      normalScale, false, FDaccurate);
-  }
-  assertFinite(result.fDiffuse);
-  assertFinite(result.fConcentrated);
-  return result;
-}
-
-SampleResult PrincipledBRDF::sample(HASTY_INOUT(RNG) rng, const SurfaceInteraction& interaction, const LightRayInfo& lightRay, const Vec3f& wo, OutsideIORFunctor getOutsideIOR, bool adjoint, ShaderEvalFlag evalFlag)
+//wavelength \in [-1, 0, 1, 2] where -1 means the same index of refraction for all wavelengths
+SampleResult PrincipledBRDF::sample(
+  HASTY_INOUT(RNG) rng, const SurfaceInteraction& interaction, const Vec3f& wo, const Vec3f& normalShading,
+  const Vec3f& albedoHit,
+  float metallicHit, float specularHit, float roughnessHit, float anisotropyHit, float transmissionHit,
+  Wavelength wavelength, float indexOfRefractionOutside, float indexOfRefractionMat, bool adjoint, ShaderEvalFlag evalFlag)
 {
   SampleResult result;
-  result.lightRay = lightRay;
 
   assert(evalFlag != ShaderEvalFlag::NONE); // no distribution to sample
+  assert(dot(normalShading, wo) >= 0.0f);
 
   float dotNgWo = dot(interaction.normalGeometric, wo);
-  Vec3f normalShading = getShadingNormal(interaction, wo, dotNgWo);
   float dotNsWo = dot(normalShading, wo);
 
-  Vec3f albedoHit = albedo->evaluate(interaction);
-  float roughnessHit = roughness->evaluate(interaction);
-  float metallicHit = metallic->evaluate(interaction);
-  float specularHit = this->specular;
-  float anisotropyHit = this->anisotropy;
-  float transmissionHit = transmission;
-
-  float alpha = computeAlpha(roughnessHit);
-
-  float indexOfRefractionOutside = getOutsideIOR();
-  float indexOfRefractionMat;
-  int wavelength;
-  if(varyIOR)
-  {
-    wavelength = result.lightRay.getWavelength(rng, abs(albedoHit));
-    indexOfRefractionMat = getIndexOfRefraction(wavelength);
-  }
-  else
-  {
-    wavelength = -1;
-    indexOfRefractionMat = getIndexOfRefraction(0);
-  }
+  float alpha = PrincipledBRDF::computeAlpha(roughnessHit);
 
   result.outside = sideOutside(dotNgWo);
   float indexOfRefraction_o = result.outside ? indexOfRefractionOutside : indexOfRefractionMat;
   float indexOfRefraction_refr_o = result.outside ? indexOfRefractionMat : indexOfRefractionOutside;
 
-  ProbabilityResult probabilityResult = computeProbability(metallicHit, specularHit, transmissionHit, dotNsWo, indexOfRefraction_o, indexOfRefraction_refr_o, evalFlag);
+  PrincipledBRDF::ProbabilityResult probabilityResult = PrincipledBRDF::computeProbability(metallicHit, specularHit, transmissionHit, dotNsWo, indexOfRefraction_o, indexOfRefraction_refr_o, evalFlag);
 
   if(probabilityResult.noStrategy)
   {
@@ -539,6 +426,7 @@ SampleResult PrincipledBRDF::sample(HASTY_INOUT(RNG) rng, const SurfaceInteracti
   }
 
   // we just put the same Fresnel term in for all wavelengths and then mask the output:
+  // we may need to change a lot fo rough glass material...
   Vec3f FDaccurateVector = Vec3f::Fill(probabilityResult.FDaccurate);
   Vec3f wavelengthMask = Vec3f::Ones();
   if(wavelength != -1)
@@ -549,7 +437,7 @@ SampleResult PrincipledBRDF::sample(HASTY_INOUT(RNG) rng, const SurfaceInteracti
 
   float alpha_t, alpha_b;
   Vec3f tangent, bitangent;
-  computeAnisotropyParameters(interaction, normalShading, alpha, anisotropyHit, alpha_t, alpha_b, tangent, bitangent);
+  PrincipledBRDF::computeAnisotropyParameters(interaction, normalShading, alpha, anisotropyHit, alpha_t, alpha_b, tangent, bitangent);
 
   // pSpecStr = proability to sample using Specular Strategy
   // p_diff = probability density of diffuse sampling scheme
@@ -592,7 +480,7 @@ SampleResult PrincipledBRDF::sample(HASTY_INOUT(RNG) rng, const SurfaceInteracti
       float dotNsWi = dot(normalShading, wi);
       float normalScale = computeNormalScale(wi, normalShading, interaction.normalGeometric);
       evalResult.fDiffuse = Vec3f::Zero();
-      evalResult.fConcentrated = 1e12f / probabilityResult.pSpecularStrategy * PrincipledBRDFevaluateConcentratedWithoutTransmission(
+      evalResult.fConcentrated = 1e12f / probabilityResult.pSpecularStrategy * PrincipledBRDF::evaluateConcentratedWithoutTransmission(
         dotNsWi,
         albedoHit, metallicHit, specularHit,
         roughnessHit, anisotropyHit, transmissionHit,
@@ -615,8 +503,8 @@ SampleResult PrincipledBRDF::sample(HASTY_INOUT(RNG) rng, const SurfaceInteracti
       const Vec3f& wi = result.direction;
       float dotNsWi = dot(normalShading, wi);
       float normalScale = computeNormalScale(wi, normalShading, interaction.normalGeometric);
-      evalResult.fDiffuse = PrincipledBRDFevaluateDiffuse(dotNsWi, albedoHit, normalScale, metallicHit, specularHit, transmissionHit);
-      evalResult.fConcentrated = PrincipledBRDFevaluateConcentratedWithoutTransmission(
+      evalResult.fDiffuse = PrincipledBRDF::evaluateDiffuse(dotNsWi, albedoHit, normalScale, metallicHit, specularHit, transmissionHit);
+      evalResult.fConcentrated = PrincipledBRDF::evaluateConcentratedWithoutTransmission(
         dotNsWi,
         albedoHit, metallicHit, specularHit,
         roughnessHit, anisotropyHit, transmissionHit,
@@ -638,15 +526,15 @@ SampleResult PrincipledBRDF::sample(HASTY_INOUT(RNG) rng, const SurfaceInteracti
     if(alpha == 0.0f) // delta distribution; need to keep wierd fake measure
     {
       result.pdfOmega = probabilityResult.pDiffuseStrategy * pdfDiffuse;
-      evalResult.fDiffuse = PrincipledBRDFevaluateDiffuse(dotNsWi, albedoHit, normalScale, metallicHit, specularHit, transmissionHit);
+      evalResult.fDiffuse = PrincipledBRDF::evaluateDiffuse(dotNsWi, albedoHit, normalScale, metallicHit, specularHit, transmissionHit);
       evalResult.fConcentrated = Vec3f::Zero();
     }
     else
     {
       float pdfSpec = sampleGGXVNDFGlobalDensity(normalShading, alpha_t, alpha_b, tangent, bitangent, wo, result.direction);
       result.pdfOmega = probabilityResult.pSpecularStrategy * pdfSpec + (1.0f - probabilityResult.pSpecularStrategy) * pdfDiffuse;
-      evalResult.fDiffuse = PrincipledBRDFevaluateDiffuse(dotNsWi, albedoHit, normalScale, metallicHit, specularHit, transmissionHit);
-      evalResult.fConcentrated = PrincipledBRDFevaluateConcentratedWithoutTransmission(
+      evalResult.fDiffuse = PrincipledBRDF::evaluateDiffuse(dotNsWi, albedoHit, normalScale, metallicHit, specularHit, transmissionHit);
+      evalResult.fConcentrated = PrincipledBRDF::evaluateConcentratedWithoutTransmission(
         dotNsWi,
         albedoHit, metallicHit, specularHit,
         roughnessHit, anisotropyHit, transmissionHit,
@@ -690,6 +578,127 @@ SampleResult PrincipledBRDF::sample(HASTY_INOUT(RNG) rng, const SurfaceInteracti
   return result;
 }
 
+PrincipledBRDF::PrincipledBRDF(std::unique_ptr<ITextureMap3f> albedo, std::unique_ptr<ITextureMap1f> roughness, std::unique_ptr<ITextureMap1f> metallic, float specular, float indexOfRefraction, std::unique_ptr<ITextureMap3f> normalMap, float anisotropy, float transmission, bool varyIOR)
+  :albedo(std::move(albedo)), roughness(std::move(roughness)), metallic(std::move(metallic)), specular(specular), indexOfRefraction(indexOfRefraction), normalMap(std::move(normalMap)), anisotropy(anisotropy), transmission(transmission), varyIOR(varyIOR)
+{
+}
+PrincipledBRDF::~PrincipledBRDF()
+{
+
+}
+float PrincipledBRDF::getIndexOfRefraction(int wavelength) const
+{
+  if(!varyIOR)
+  {
+    return indexOfRefraction;
+  }
+  assert(wavelength != -1);
+  switch(wavelength)
+  {
+  case 0: return indexOfRefraction * (1.43f / 1.45f);
+  case 1: return indexOfRefraction * (1.45f / 1.45f);
+  case 2: return indexOfRefraction * (1.47f / 1.45f);
+  default: return std::numeric_limits<float>::signaling_NaN();
+  }
+}
+Vec3f PrincipledBRDF::getShadingNormal(const SurfaceInteraction& interaction, const Vec3f& wo, float dotNgWo)
+{
+  float sideNgWo = signSide(dotNgWo);
+  Vec3f normalShading;
+  // first we make sure we have a normal that points in the same direction wrt wo
+  if(normalMap)
+  {
+    Vec3f color = normalMap->evaluate(interaction);
+    Vec3f texNormal = 2.0f * color - Vec3f::Ones();
+    normalShading = normalize(interaction.tangent * texNormal[0] + interaction.bitangent * texNormal[1] + interaction.normalGeometric * texNormal[2]);
+  }
+  else
+  {
+    normalShading = interaction.normalShadingDefault;
+  }
+  float sideNsWo = signSide(dot(normalShading, wo));
+  if(sideNgWo != sideNsWo)
+  {
+    normalShading = interaction.normalGeometric; // this is not consistent but good enough for the hack called normal map
+  }
+  // here we guarantuee signSide(normalShading, wo) == signSide(interaction.normalGeometric, wo)
+  // but now we flip it according to normalGeometric:
+  normalShading *= sideNgWo;
+  return normalShading;
+}
+
+MaterialEvalResult PrincipledBRDF::evaluate(const SurfaceInteraction& interaction, const Vec3f& wo, const Vec3f& wi, float indexOfRefractionOutside, bool adjoint, ShaderEvalFlag evalFlag)
+{
+  // There are two things to consider: leakage which we are trying to prevent with the statement above
+  // and when wierd situations appear because geometric normal != shading normal
+  //   there are two problematic subcases for the second case: wo is on the "inside" of the shading normal
+  //          and the sampled out direction points into  the geometric normal
+  //  see "Microfacet-based Normal Mapping for Robust Monte Carlo Path Tracing" for an overview
+  // we ignore conservation loses and from the results in the paper and due to simplicity, address the first subcase using flipping , see sec. 3.4
+  // the second subcase we just do a reflection across the normalGeometric surface
+
+  float dotNgWo = dot(interaction.normalGeometric, wo);
+  Vec3f normalShading = getShadingNormal(interaction, wo, dotNgWo);
+  float dotNsWo = dot(normalShading, wo);
+  float dotNsWi = dot(normalShading, wi);
+
+  MaterialEvalResult result = MaterialEvalResult(Vec3f::Zero(), Vec3f::Zero(), normalShading);
+
+  Vec3f albedoHit = albedo->evaluate(interaction);
+  float roughnessHit = roughness->evaluate(interaction);
+  float alpha = PrincipledBRDF::computeAlpha(roughnessHit);
+  float metallicHit = metallic->evaluate(interaction);
+  float specularHit = this->specular;
+  float anisotropyHit = this->anisotropy;
+  float transmissionHit = transmission;
+
+  float normalScale = computeNormalScale(wi, normalShading, interaction.normalGeometric);
+
+  if(has(evalFlag, ShaderEvalFlag::DIFFUSE))
+  {
+    result.fDiffuse = PrincipledBRDF::evaluateDiffuse(dotNsWi, albedoHit, normalScale, metallicHit, specularHit, transmissionHit); // we use a Lambertian model here to keep it energy conserving
+  }
+
+  if(has(evalFlag, ShaderEvalFlag::CONCENTRATED))
+  {
+    Vec3f FDaccurate = Vec3f::Fill(std::numeric_limits<double>::signaling_NaN()); // not used since we can't hit dirac distribution (TODO change when adding roughness to glass/transmissionHit sub BRDF) and then we will need to compute multiple FD (one for each wavelength)
+
+    float alpha_t, alpha_b;
+    Vec3f tangent, bitangent;
+    PrincipledBRDF::computeAnisotropyParameters(interaction, normalShading, alpha, anisotropyHit, alpha_t, alpha_b, tangent, bitangent);
+
+    result.fConcentrated = PrincipledBRDF::evaluateConcentratedWithoutTransmission(
+      dotNsWi,
+      albedoHit, metallicHit, specularHit, roughnessHit, anisotropyHit, transmissionHit,
+      wo, wi, alpha, alpha_t, alpha_b, tangent, bitangent, normalShading,
+      normalScale, false, FDaccurate);
+  }
+  assertFinite(result.fDiffuse);
+  assertFinite(result.fConcentrated);
+  return result;
+}
+
+SampleResult PrincipledBRDF::sample(HASTY_INOUT(RNG) rng, const SurfaceInteraction& interaction, const Vec3f& wo, Wavelength wavelength, float indexOfRefractionOutside, bool adjoint, ShaderEvalFlag evalFlag)
+{
+  assert(wavelength != -1 || !this->varyIOR);
+
+  Vec3f albedoHit = albedo->evaluate(interaction);
+  float roughnessHit = roughness->evaluate(interaction);
+  float metallicHit = metallic->evaluate(interaction);
+  float specularHit = this->specular;
+  float anisotropyHit = this->anisotropy;
+  float transmissionHit = transmission;
+  Vec3f normalShading = getShadingNormal(interaction, wo, dot(interaction.normalGeometric, wo));
+
+  float indexOfRefractionMat = this->getIndexOfRefraction(wavelength);
+
+  return PrincipledBRDF::sample(
+    rng, interaction, wo, normalShading,
+    albedoHit,
+    metallicHit, specularHit, roughnessHit, anisotropyHit, transmissionHit,
+    wavelength, indexOfRefractionOutside, indexOfRefractionMat, adjoint, evalFlag);
+}
+
 float PrincipledBRDF::evaluateSamplePDF(const SurfaceInteraction& interaction, const Vec3f& wo, const Vec3f& wi, float outsideIOR)
 {
   float dotNgWo = dot(interaction.normalGeometric, wo);
@@ -697,7 +706,7 @@ float PrincipledBRDF::evaluateSamplePDF(const SurfaceInteraction& interaction, c
   float dotNsWo = dot(normalShading, wo);
 
   float roughnessHit = roughness->evaluate(interaction);
-  float alpha = computeAlpha(roughnessHit);
+  float alpha = PrincipledBRDF::computeAlpha(roughnessHit);
   float metallicHit = metallic->evaluate(interaction);
   float specularHit = this->specular;
   float transmissionHit = this->transmission;
@@ -710,7 +719,7 @@ float PrincipledBRDF::evaluateSamplePDF(const SurfaceInteraction& interaction, c
   float indexOfRefraction_o = fromOutside ? indexOfRefractionOutside : indexOfRefractionMat;
   float indexOfRefraction_t = fromOutside ? indexOfRefractionMat : indexOfRefractionOutside;
 
-  ProbabilityResult probabilityResult = computeProbability(metallicHit, specularHit, transmissionHit, dotNsWo, indexOfRefraction_o, indexOfRefraction_t, ShaderEvalFlag::ALL);
+  PrincipledBRDF::ProbabilityResult probabilityResult = PrincipledBRDF::computeProbability(metallicHit, specularHit, transmissionHit, dotNsWo, indexOfRefraction_o, indexOfRefraction_t, ShaderEvalFlag::ALL);
 
   if(alpha == 0.0f)
   {
@@ -723,7 +732,7 @@ float PrincipledBRDF::evaluateSamplePDF(const SurfaceInteraction& interaction, c
   {
     float alpha_t, alpha_b;
     Vec3f tangent, bitangent;
-    computeAnisotropyParameters(interaction, normalShading, alpha, anisotropyHit, alpha_t, alpha_b, tangent, bitangent);
+    PrincipledBRDF::computeAnisotropyParameters(interaction, normalShading, alpha, anisotropyHit, alpha_t, alpha_b, tangent, bitangent);
     float pdfSpec = sampleGGXVNDFGlobalDensity(normalShading, alpha_t, alpha_b, tangent, bitangent, wo, wi);
     float pdfDiffuse = evaluateHemisphereCosImportancePDF(normalShading, wi);
     float samplePd = probabilityResult.pSpecularStrategy * pdfSpec + probabilityResult.pDiffuseStrategy * pdfDiffuse;
