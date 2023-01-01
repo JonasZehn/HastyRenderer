@@ -19,6 +19,7 @@ const float InvPi = 0.318309886183790671;
 struct Material {
 	vec3 emission;
 	float specular;
+	float anisotropy;
 	float transmission;
 	float indexOfRefraction;
 };
@@ -83,35 +84,70 @@ layout( push_constant ) uniform PushConstants // guarantueed to be 128 bytes
 	int nSamples;
 };
 
+struct MediumInfo {
+	int mediumId;
+	vec3 transmittance;
+	float IOR;
+};
 struct LightRay {
-	vec3 mediumTransmittance;
-	float outsideIOR;
+	MediumInfo mediumInfo[3]; // only support number of overlapping media
 };
 
 LightRay LightRayConstruct()
 {
 	LightRay lightRay;
-	lightRay.mediumTransmittance = vec3(1.0);
-	lightRay.outsideIOR = 1.0;
+	for(int i=0; i<lightRay.mediumInfo.length(); i++){
+		lightRay.mediumInfo[i].mediumId = -1;
+	}
 	return lightRay;
 }
 vec3 getTransmittance(LightRay lightRay)
 {
-	return lightRay.mediumTransmittance;
+	for(int i=0; i<lightRay.mediumInfo.length(); i++){
+		if(lightRay.mediumInfo[i].mediumId != -1){
+			return lightRay.mediumInfo[i].transmittance;
+		}
+	}
+	return vec3(1.0);
 }
-float getOutsideIOR(LightRay lightRay)
+float getOutsideIOR(LightRay lightRay, bool fromOutside, int mediumId)
 {
+	if(fromOutside){
+		for(int i=0; i<lightRay.mediumInfo.length(); i++){
+			if(lightRay.mediumInfo[i].mediumId != -1){
+				return lightRay.mediumInfo[i].IOR;
+			}
+		}
+	} else {
+		for(int i=0; i<lightRay.mediumInfo.length(); i++){
+			if(lightRay.mediumInfo[i].mediumId != mediumId && lightRay.mediumInfo[i].mediumId != -1){
+				return lightRay.mediumInfo[i].IOR;
+			}
+		}
+	}
 	return 1.0;
 }
-void updateMedium(inout LightRay lightRay, bool beforeOutside, bool afterOutside, vec3 mediumTransmittance, float indexOfRefractionMat)
+void updateMedium(inout LightRay lightRay, bool beforeOutside, bool afterOutside, int mediumId, vec3 mediumTransmittance, float indexOfRefractionMat)
 {
 	if(beforeOutside && !afterOutside){
-		lightRay.mediumTransmittance = mediumTransmittance;
-		lightRay.outsideIOR = indexOfRefractionMat;
+		//entering medium
+		for(int i=0; i<lightRay.mediumInfo.length(); i++){
+			if(lightRay.mediumInfo[i].mediumId == -1){
+				lightRay.mediumInfo[i].mediumId = mediumId;
+				lightRay.mediumInfo[i].transmittance = mediumTransmittance;
+				lightRay.mediumInfo[i].IOR = indexOfRefractionMat;
+				break;
+			}
+		}
 	}
 	if(!beforeOutside && afterOutside){
-		lightRay.mediumTransmittance = vec3(1.0);
-		lightRay.outsideIOR = 1.0;
+		//leaving medium
+		for(int i=0; i<lightRay.mediumInfo.length(); i++){
+			if(lightRay.mediumInfo[i].mediumId == mediumId){
+				lightRay.mediumInfo[i].mediumId = -1;
+				break;
+			}
+		}
 	}
 }
 
@@ -359,8 +395,9 @@ SurfaceInteraction getSurfaceInteraction(rayQueryEXT rayQuery){
 	SurfaceInteraction result;
 	
 	result.primitiveID = rayQueryGetIntersectionPrimitiveIndexEXT(rayQuery, true);
-	vec2 barycentrics = rayQueryGetIntersectionBarycentricsEXT(rayQuery, true);
-	float b0 = 1.0 - barycentrics[0] - barycentrics[1];
+	vec2 barycentrics2 = rayQueryGetIntersectionBarycentricsEXT(rayQuery, true);
+	float b0 = 1.0 - barycentrics2[0] - barycentrics2[1];
+	vec3 barycentricCoordinates = vec3(b0, barycentrics2);
 	
 	uint vtxIdx0 = indices[3 * result.primitiveID];
 	uint vtxIdx1 = indices[3 * result.primitiveID + 1];
@@ -374,8 +411,8 @@ SurfaceInteraction getSurfaceInteraction(rayQueryEXT rayQuery){
 	vec2 uv1 = textureCoordinates[3 * result.primitiveID + 1];
 	vec2 uv2 = textureCoordinates[3 * result.primitiveID + 2];
 	
-	result.x = b0 * v0 + barycentrics[0] * v1 + barycentrics[1] * v2;
-	result.uv = b0 * uv0 + barycentrics[0] * uv1 + barycentrics[1] * uv2;
+	result.x = barycentricCoordinates[0] * v0 + barycentricCoordinates[1] * v1 + barycentricCoordinates[2] * v2;
+	result.uv = barycentricCoordinates[0] * uv0 + barycentricCoordinates[1] * uv1 + barycentricCoordinates[2] * uv2;
 	result.uvInverted = vec2(result.uv.x, 1.0 - result.uv.y);
 	
 	vec3 m = cross(v1 - v0, v2 - v0);
@@ -1034,19 +1071,20 @@ void cameraRay(HASTY_INOUT(RNG) rng, vec2 p, vec2 frameSize, out vec3 origin, ou
 	// we aren't doing	a "physical" lense for now
 	 // focal plane is at m_position + m_forward * m_focal distance
 	// we move origin of the ray randomly, but on the focal plane these rays have to hit the same point independent of the random offset
-	float x = p[0];
-	float y = p[1];
-	float lx = (x - 0.5f * frameSize.x) / frameSize.x * 2.0f;
-	float ly = (y - 0.5f * frameSize.y) / frameSize.x * 2.0f;
-	direction = camera.forward + camera.right * (camera.fovSlope * lx) - camera.up * (camera.fovSlope * ly);
+	vec2 lam = (2.0f * p - frameSize) / frameSize.x;
+	direction = camera.forward + camera.right * (camera.fovSlope * lam.x) - camera.up * (camera.fovSlope * lam.y);
 	direction = normalize(direction);
-	float density;
-	vec2 offset = sampleCircularNGonUniformly(rng, camera.numBlades, camera.bladeRotation, density);
-	float t = camera.focalDistance * dot(direction, camera.forward);
-	vec3 focalPoint = camera.position + t * direction;
-	origin = camera.position + camera.apertureSize * offset[0] * camera.up + camera.apertureSize * offset[1] * camera.right;
-	// now adapt the direction
-	direction = normalize(focalPoint - origin);
+	if(camera.apertureSize > 0.0){
+		float density;
+		vec2 offset = sampleCircularNGonUniformly(rng, camera.numBlades, camera.bladeRotation, density);
+		float t = camera.focalDistance * dot(direction, camera.forward);
+		vec3 focalPoint = camera.position + t * direction;
+		origin = camera.position + camera.apertureSize * offset[0] * camera.up + camera.apertureSize * offset[1] * camera.right;
+		// now adapt the direction
+		direction = normalize(focalPoint - origin);
+	} else {
+		origin = camera.position;
+	}
 }
 	  
 	  
@@ -1109,6 +1147,7 @@ void main()
 					throughput *= beersLaw(getTransmittance(lightRay), norm(interaction.x - rayOrigin));
 					
 					uint materialIdx = materialIndices[interaction.primitiveID];
+					int mediumId = int(materialIdx); // this currently works because in practice it only depends on the material and all material ids will have same transmittance
 					Material material = materials[materialIdx];
 					
 					vec3 albedoHit = texture(albedoTextures[materialIdx], interaction.uvInverted).xyz;
@@ -1123,12 +1162,14 @@ void main()
 					colorSample += throughput * emission;
 					if(dot(emission,emission) > 0.0) break;
 					
+					bool beforeOutside = dot(interaction.normalGeometric, wo) > 0.0f; // wrt geometric normal
+					
 					const float metallicHit = texture(metallicTextures[materialIdx], interaction.uvInverted).x;
 					const float roughnessHit = texture(roughnessTextures[materialIdx], interaction.uvInverted).x;
 					
 					const float specularHit = material.specular;
-					const float anisotropyHit = 0.0;
-					const float indexOfRefractionOutside = getOutsideIOR(lightRay);
+					const float anisotropyHit = material.anisotropy;
+					const float indexOfRefractionOutside = getOutsideIOR(lightRay, beforeOutside, mediumId);
 					const float indexOfRefractionMat = material.indexOfRefraction;
 					const float transmissionHit = material.transmission;
 					int wavelength = -1;
@@ -1147,9 +1188,8 @@ void main()
 					rayOrigin = interaction.x + (sampleResult.outside ? 1e-4 : -1e-4) * interaction.normalGeometric;
 					rayDirection = sampleResult.direction;
 					
-					bool beforeOutside = dot(interaction.normalGeometric, wo) > 0.0f; // wrt geometric normal
 					bool afterOutside = sampleResult.outside; // wrt geometric normal
-					updateMedium(lightRay, beforeOutside, afterOutside, albedoHit, indexOfRefractionMat);
+					updateMedium(lightRay, beforeOutside, afterOutside, mediumId, albedoHit, indexOfRefractionMat);
 				} else {
 					break;
 				}

@@ -144,6 +144,7 @@ public:
   const ITextureMap1f& getMetallic() const { return *metallic; }
 
   float getSpecular() const { return specular; }
+  float getAnisotropy() const { return anisotropy; }
   float getTransmission() const { return transmission; }
 
   // returns normal in direction of wo

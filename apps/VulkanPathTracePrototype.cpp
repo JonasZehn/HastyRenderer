@@ -32,6 +32,7 @@ struct MaterialUniformBufferObject
 {
   alignas(4) Vec3f emission;
   alignas(4) float specular;
+  alignas(4) float anisotropy;
   alignas(4) float transmission;
   alignas(4) float indexOfRefraction;
 };
@@ -223,6 +224,7 @@ public:
       material.emission = scene.getMaterialEmission(materialIdx);
       material.specular = 0.0f;
       material.transmission = 0.0f;
+      material.transmission = 0.0f;
       material.indexOfRefraction = 1.0f;
 
       Image1f constImage1f(1, 1);
@@ -242,6 +244,7 @@ public:
           roughnessImage = getImagePointer<float>(&principledBRDF->getRoughness());
 
           material.specular = principledBRDF->getSpecular();
+          material.anisotropy = principledBRDF->getAnisotropy();
           material.transmission = principledBRDF->getTransmission();
           material.indexOfRefraction = principledBRDF->getIndexOfRefractionMap();
         }
