@@ -22,7 +22,11 @@ public:
   Ray computeRay(RNG& rng, const Vec2f& p, float frameWidth, float frameHeight);
   float computeRayAngle(const Vec2f& p, float frameWidth, float frameHeight);
   const Vec3f& getPosition() const { return m_position; }
-  float getFoVSlope() { return std::tan(0.5f * (float(Pi) * m_fovDegree / 180.0f)); }
+  float getFoVSlope() const { return std::tan(0.5f * (float(Pi) * m_fovDegree / 180.0f)); }
+  float getApertureSize() const { return m_apertureSize; }
+  float getFocalDistance() const { return m_focalDistance; }
+  int getNumBlades() const { return m_numBlades; }
+  float getBladeRotation() const { return m_bladeRotation; }
   Vec3f getForward() const { return m_forward; }
   Vec3f getUp() const { return m_up; }
   Vec3f getRight() const { return m_right; }

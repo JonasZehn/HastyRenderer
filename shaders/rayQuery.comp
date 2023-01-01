@@ -3,10 +3,15 @@
 #extension GL_EXT_scalar_block_layout : require
 #extension GL_EXT_nonuniform_qualifier : require
 
-float square(float f){ return f*f; }
 #define HASTY_OUT(type) out type
 #define HASTY_INOUT(type) inout type
 #define HASTY_POWCI(v, constantIntegerExponent) pow(v, constantIntegerExponent);
+
+float square(float f){ return f*f; }
+
+float norm(vec2 f){ return sqrt(dot(f,f)); }
+float norm(vec3 f){ return sqrt(dot(f,f)); }
+float norm(vec4 f){ return sqrt(dot(f,f)); }
 
 const float Pi = 3.14159265358979323846;
 const float InvPi = 0.318309886183790671;
@@ -15,6 +20,7 @@ struct Material {
 	vec3 emission;
 	float specular;
 	float transmission;
+	float indexOfRefraction;
 };
 
 layout(local_size_x = 4, local_size_y = 4, local_size_z = 1) in;
@@ -62,6 +68,10 @@ layout(binding = 10, scalar) uniform Camera {
 	vec3 forward;
 	vec3 right;
 	vec3 up;
+	float apertureSize;
+	float focalDistance;
+	int numBlades;
+	float bladeRotation;
 } camera;
 
 layout(binding = 11, set = 0, rgba32f) uniform image2D colorImage;
@@ -73,13 +83,51 @@ layout( push_constant ) uniform PushConstants // guarantueed to be 128 bytes
 	int nSamples;
 };
 
+struct LightRay {
+	vec3 mediumTransmittance;
+	float outsideIOR;
+};
 
+LightRay LightRayConstruct()
+{
+	LightRay lightRay;
+	lightRay.mediumTransmittance = vec3(1.0);
+	lightRay.outsideIOR = 1.0;
+	return lightRay;
+}
+vec3 getTransmittance(LightRay lightRay)
+{
+	return lightRay.mediumTransmittance;
+}
+float getOutsideIOR(LightRay lightRay)
+{
+	return 1.0;
+}
+void updateMedium(inout LightRay lightRay, bool beforeOutside, bool afterOutside, vec3 mediumTransmittance, float indexOfRefractionMat)
+{
+	if(beforeOutside && !afterOutside){
+		lightRay.mediumTransmittance = mediumTransmittance;
+		lightRay.outsideIOR = indexOfRefractionMat;
+	}
+	if(!beforeOutside && afterOutside){
+		lightRay.mediumTransmittance = vec3(1.0);
+		lightRay.outsideIOR = 1.0;
+	}
+}
 
-vec3 cameraRay(vec2 pixelPosition, vec2 frameSize){
-	const vec2 lam = (2.0 * pixelPosition - vec2(frameSize) ) / frameSize.x;
-	vec3 rayDirection = camera.forward + camera.right * (camera.fovSlope * lam.x) + camera.up * (-camera.fovSlope * lam.y);
-	rayDirection = normalize(rayDirection);
-	return rayDirection;
+vec3 beersLaw(vec3 transmittance, float d)
+{
+	if(transmittance == vec3(1.0)) return vec3(1.0); // hot code path
+
+	vec3 result;
+	float dRef = 1.0f;
+	float invdRef = 1.0f / dRef;
+	for(int i = 0; i < 3; i++)
+	{
+		result[i] = transmittance[i] <= 0.0f ? 0.0f : pow(transmittance[i], invdRef * d); //	exp(logf(transmittance[i]) * (invdRef * d))
+	}
+	//assertFinite(result);
+	return result;
 }
 
 struct HaltonSequence1 {
@@ -224,6 +272,46 @@ RotationBetweenTwoVectors RotationBetweenTwoVectorsConstruct(vec3 vFrom, vec3 vT
 vec3 applyRotation(RotationBetweenTwoVectors rotation, vec3 x)
 {
   return x * rotation.a + cross(rotation.b, x) + rotation.c * dot(rotation.d, x);
+}
+
+
+vec2 sampleDiskUniformly(HASTY_INOUT(RNG) rng, HASTY_OUT(float) pDensity)
+{
+	float alpha = uniform01f(rng) * float(2.0 * Pi);
+	float r = sqrt(uniform01f(rng));
+	pDensity = float(InvPi);
+	return vec2(r * cos(alpha), r * sin(alpha));
+}
+vec2 sampleCircularNGonUniformly(HASTY_INOUT(RNG) rng, int numBlades, float bladeRotation, HASTY_OUT(float) pDensity)
+{
+	//assert(bladeRotation >= float(-Pi));
+	//assert(numBlades >= 3);
+
+	// do a half plane test with direction of anglePerSector/2
+	float anglePerSector = float(2.0 * Pi / numBlades);
+	vec2 normal = vec2(cos(anglePerSector * 0.5f), sin(anglePerSector * 0.5f));
+	float d = -normal[0];	// offset such that (1,0) is on the border of the half plane
+
+	vec2 samplePosition;
+	bool outside;
+	do
+	{
+		samplePosition = sampleDiskUniformly(rng, pDensity);
+		float r = norm(samplePosition);
+		float angle = atan(samplePosition[1], samplePosition[0]);
+		angle -= bladeRotation;
+		angle += float(2.0 * Pi) * (1.0f + 1e-6); // make sure angle is bigger than zero
+		// now normalize wrt to angular sector:
+		angle = mod(angle, anglePerSector);
+		vec2 normalizedPosition = vec2(r * cos(angle), r * sin(angle));
+		outside = (dot(normal, normalizedPosition) + d) > 0.0f;
+	} while(outside);
+
+	float areaSector = 0.5 * sin(anglePerSector); // Area = 0.5 * radius * radius * sin(anglePerSector)
+	float areaNGon = numBlades * areaSector;
+	pDensity = 1.0 / areaNGon;
+
+	return samplePosition;
 }
 
 vec3 sampleHemisphereCosImportance(inout RNG rng, vec3 normal, out float pDensity)
@@ -941,6 +1029,27 @@ vec3 PrincipledBRDFgetShadingNormal(SurfaceInteraction interaction, vec3 wo, flo
 	return normalShading;
 }
 
+// p = pixelPosition
+void cameraRay(HASTY_INOUT(RNG) rng, vec2 p, vec2 frameSize, out vec3 origin, out vec3 direction){
+	// we aren't doing	a "physical" lense for now
+	 // focal plane is at m_position + m_forward * m_focal distance
+	// we move origin of the ray randomly, but on the focal plane these rays have to hit the same point independent of the random offset
+	float x = p[0];
+	float y = p[1];
+	float lx = (x - 0.5f * frameSize.x) / frameSize.x * 2.0f;
+	float ly = (y - 0.5f * frameSize.y) / frameSize.x * 2.0f;
+	direction = camera.forward + camera.right * (camera.fovSlope * lx) - camera.up * (camera.fovSlope * ly);
+	direction = normalize(direction);
+	float density;
+	vec2 offset = sampleCircularNGonUniformly(rng, camera.numBlades, camera.bladeRotation, density);
+	float t = camera.focalDistance * dot(direction, camera.forward);
+	vec3 focalPoint = camera.position + t * direction;
+	origin = camera.position + camera.apertureSize * offset[0] * camera.up + camera.apertureSize * offset[1] * camera.right;
+	// now adapt the direction
+	direction = normalize(focalPoint - origin);
+}
+	  
+	  
 void main()
 {
 	ivec2 size = imageSize(colorImage);
@@ -972,8 +1081,9 @@ void main()
 			vec3 throughput = vec3(1.0);
 			
 			const vec2 pixelPosition = vec2(loc) + HaltonSequence2Update(pixelPositionSeq);
-			vec3 rayOrigin = camera.position;
-			vec3 rayDirection = cameraRay(pixelPosition, size);
+			vec3 rayOrigin, rayDirection;
+			cameraRay(rng, pixelPosition, size, rayOrigin, rayDirection);
+			LightRay lightRay = LightRayConstruct();
 			
 			for(int depth = 0; depth < 10; depth++){
 				
@@ -993,9 +1103,11 @@ void main()
 				
 				if(rayQueryGetIntersectionTypeEXT(rayQuery, true) == gl_RayQueryCommittedIntersectionTriangleEXT)
 				{
-					vec3 wo = -rayDirection;
-					
 					SurfaceInteraction interaction = getSurfaceInteraction(rayQuery);
+					
+					vec3 wo = -rayDirection;
+					throughput *= beersLaw(getTransmittance(lightRay), norm(interaction.x - rayOrigin));
+					
 					uint materialIdx = materialIndices[interaction.primitiveID];
 					Material material = materials[materialIdx];
 					
@@ -1007,17 +1119,18 @@ void main()
 					}
 					
 					vec3 emission = getEmissionRadiance(wo, interaction.normalGeometric, material);
+					
 					colorSample += throughput * emission;
 					if(dot(emission,emission) > 0.0) break;
 					
 					const float metallicHit = texture(metallicTextures[materialIdx], interaction.uvInverted).x;
 					const float roughnessHit = texture(roughnessTextures[materialIdx], interaction.uvInverted).x;
+					
 					const float specularHit = material.specular;
 					const float anisotropyHit = 0.0;
-					const float indexOfRefractionOutside = 1.0;
-					const float indexOfRefractionMat = 1.45;
+					const float indexOfRefractionOutside = getOutsideIOR(lightRay);
+					const float indexOfRefractionMat = material.indexOfRefraction;
 					const float transmissionHit = material.transmission;
-					//if(transmissionHit > 0.0f) {colorSample = vec3(1.0f, 0.0f, 0.0f); break;}
 					int wavelength = -1;
 					vec3 normalShading = PrincipledBRDFgetShadingNormal(interaction, wo, dot(interaction.normalGeometric, wo));
 					
@@ -1033,6 +1146,10 @@ void main()
 					
 					rayOrigin = interaction.x + (sampleResult.outside ? 1e-4 : -1e-4) * interaction.normalGeometric;
 					rayDirection = sampleResult.direction;
+					
+					bool beforeOutside = dot(interaction.normalGeometric, wo) > 0.0f; // wrt geometric normal
+					bool afterOutside = sampleResult.outside; // wrt geometric normal
+					updateMedium(lightRay, beforeOutside, afterOutside, albedoHit, indexOfRefractionMat);
 				} else {
 					break;
 				}

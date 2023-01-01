@@ -23,12 +23,17 @@ struct CameraUniformBufferObject
   alignas(4) Vec3f forward;
   alignas(4) Vec3f right;
   alignas(4) Vec3f up;
+  alignas(4) float apertureSize;
+  alignas(4) float focalDistance;
+  alignas(4) int32_t numBlades;
+  alignas(4) float bladeRotation;
 };
 struct MaterialUniformBufferObject
 {
   alignas(4) Vec3f emission;
   alignas(4) float specular;
   alignas(4) float transmission;
+  alignas(4) float indexOfRefraction;
 };
 struct PushConstantsSample
 {
@@ -211,7 +216,6 @@ public:
 
     for(int materialIdx = 0; materialIdx < scene.getMaterialCount(); materialIdx++)
     {
-
       BXDF& bxdf = scene.getBXDFByIndex(materialIdx);
       PrincipledBRDF* principledBRDF = dynamic_cast<PrincipledBRDF*>(&bxdf);
 
@@ -219,6 +223,7 @@ public:
       material.emission = scene.getMaterialEmission(materialIdx);
       material.specular = 0.0f;
       material.transmission = 0.0f;
+      material.indexOfRefraction = 1.0f;
 
       Image1f constImage1f(1, 1);
       constImage1f(0, 0) = 0.0f;
@@ -238,6 +243,7 @@ public:
 
           material.specular = principledBRDF->getSpecular();
           material.transmission = principledBRDF->getTransmission();
+          material.indexOfRefraction = principledBRDF->getIndexOfRefractionMap();
         }
       }
 
@@ -340,6 +346,11 @@ public:
     cameraData.forward = scene.camera.getForward();
     cameraData.up = scene.camera.getUp();
     cameraData.right = scene.camera.getRight();
+    cameraData.apertureSize = scene.camera.getApertureSize();
+    cameraData.focalDistance = scene.camera.getFocalDistance();
+    cameraData.numBlades = scene.camera.getNumBlades();
+    cameraData.bladeRotation = scene.camera.getBladeRotation();
+
     cameraUniformBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, sizeof(cameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
     cameraUniformBuffer->write((void*)&cameraData, sizeof(cameraData));
 
@@ -722,6 +733,7 @@ public:
       outputImageBuffer.read(outputImage.data(), outputImage.byteCount());
       colorImage = removeAlphaChannel(outputImage);
       colorImage /= static_cast<float>(nSamples);
+      colorImage *= std::pow(2.0f, job.scene->camera.getExposure());
     }
     {
       VulkanFence fence(deviceAndQueue);

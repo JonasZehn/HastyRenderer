@@ -88,18 +88,6 @@ public:
     m_data[1] += v2[1];
     return *this;
   }
-  inline float dot(const Vec2f& v2) const
-  {
-    return m_data[0] * v2[0] + m_data[1] * v2[1];
-  }
-  inline float normSq() const
-  {
-    return this->dot(*this);
-  }
-  inline float norm() const
-  {
-    return std::sqrt(this->dot(*this));
-  }
   inline static Vec2f Constant(float f)
   {
     return Vec2f(f, f);
@@ -116,6 +104,19 @@ public:
 private:
   std::array<float, 2> m_data;
 };
+
+inline float dot(const Vec2f& v1, const Vec2f& v2)
+{
+  return v1[0] * v2[0] + v1[1] * v2[1];
+}
+inline float normSq(const Vec2f& v1)
+{
+  return dot(v1, v1);
+}
+inline float norm(const Vec2f& v1)
+{
+  return std::sqrt(dot(v1, v1));
+}
 
 class Vec3f
 {

@@ -135,6 +135,7 @@ public:
   PrincipledBRDF(std::unique_ptr<ITextureMap3f> albedo, std::unique_ptr<ITextureMap1f> roughness, std::unique_ptr<ITextureMap1f> metallic, float specular, float indexOfRefraction, std::unique_ptr<ITextureMap3f> normalMap, float anisotropy, float transmission, bool varyIOR);
   ~PrincipledBRDF();
 
+  float getIndexOfRefractionMap() const { return indexOfRefraction; }
   float getIndexOfRefraction(int wavelength) const;
   const ITextureMap3f& getAlbedo() const { return *albedo; }
   Vec3f getAlbedo(const SurfaceInteraction& interaction) const { return albedo->evaluate(interaction); }

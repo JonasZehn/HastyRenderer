@@ -16,7 +16,9 @@ inline void checkVkResult(VkResult vkResult, const char* name)
 {
   if(vkResult != VK_SUCCESS)
   {
-    throw std::runtime_error("failed to " + std::string(name) + ", result = " + std::string(string_VkResult(vkResult)));
+    std::string msg = ("failed to " + std::string(name) + ", result = " + std::string(string_VkResult(vkResult)));
+    std::cout << " msg " << msg << std::endl;
+    throw std::runtime_error(msg);
   }
 }
 
