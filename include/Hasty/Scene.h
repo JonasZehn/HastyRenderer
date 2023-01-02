@@ -88,8 +88,10 @@ protected:
 public:
   std::vector<std::size_t> getGeometryIDs() const;
   const std::vector<float>& getVertices() const;
+  const std::vector<float>& getNormals() const;
   std::size_t getTriangleCount(std::size_t geomID) const;
   std::array<int, 3> getTriangleVertexIndices(std::size_t geomID, std::size_t primID) const;
+  std::array<int, 3> getTriangleNormalIndices(std::size_t geomID, std::size_t primID) const;
   std::optional< std::array<Vec2f, 3> > getTriangleUV(std::size_t geomID, std::size_t primID) const
   {
     return collectTriangleUV(reader, geomID, primID);

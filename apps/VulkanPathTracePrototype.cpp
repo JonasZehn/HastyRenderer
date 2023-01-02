@@ -41,6 +41,13 @@ struct PushConstantsSample
   alignas(4) int32_t nSamples;
   alignas(4) Vec3f backgroundColor;
 };
+struct TriangleData
+{
+  alignas(4) uint32_t vertexIndices[3];
+  alignas(4) uint32_t materialIndex;
+  alignas(4) Vec2f textureCoordinates[3];
+  alignas(4) int32_t normalIndices[3];
+};
 
 
 template<typename _PixelType>
@@ -202,18 +209,17 @@ public:
     {
       faceCount += scene.getTriangleCount(geometryID);
     }
-    std::vector<Vec2f> textureCoordinates;
-    textureCoordinates.reserve(faceCount * 3);
     std::vector<uint32_t> indices;
     indices.reserve(faceCount * 3);
-    std::vector<uint32_t> materialIndices;
-    materialIndices.reserve(faceCount);
+    std::vector<TriangleData> triangles;
+    triangles.reserve(faceCount);
+    const std::vector<float>& normals = scene.getNormals();
     std::vector<MaterialUniformBufferObject> materials;
     materials.reserve(scene.getMaterialCount());
 
     backgroundColor = Vec3f::Zero();
 
-    BackgroundColor const * backgroundColorObject = dynamic_cast<BackgroundColor const *>(&scene.getBackground());
+    BackgroundColor const* backgroundColorObject = dynamic_cast<BackgroundColor const*>(&scene.getBackground());
     if(backgroundColorObject != nullptr)
     {
       backgroundColor = backgroundColorObject->getColor();
@@ -283,16 +289,18 @@ public:
         indices.push_back(tri[0]);
         indices.push_back(tri[1]);
         indices.push_back(tri[2]);
-
-        materialIndices.push_back(scene.getMaterialIndex(geometryID, primIndex));
-
         std::array<Vec2f, 3> uv = { Vec2f::Zero(), Vec2f::Zero(), Vec2f::Zero() };
         std::optional< std::array<Vec2f, 3> > uvOptional = scene.getTriangleUV(geometryID, primIndex);
         if(uvOptional.has_value()) uv = uvOptional.value();
 
-        textureCoordinates.push_back(uv[0]);
-        textureCoordinates.push_back(uv[1]);
-        textureCoordinates.push_back(uv[2]);
+        std::array<int, 3> normalIndices = scene.getTriangleNormalIndices(geometryID, primIndex);
+
+        triangles.emplace_back();
+        auto& triangle = triangles.back();
+        triangle.materialIndex = scene.getMaterialIndex(geometryID, primIndex);
+        for(int i = 0; i < 3; i++) triangle.textureCoordinates[i] = uv[i];
+        for(int i = 0; i < 3; i++) triangle.vertexIndices[i] = tri[i];
+        for(int i = 0; i < 3; i++) triangle.normalIndices[i] = normalIndices[i];
       }
       faceOffset += geometryFaceCount;
     }
@@ -315,9 +323,9 @@ public:
     }
 
     std::size_t verticesByteCount = sizeof(decltype(vertices)::value_type) * vertices.size();
-    std::size_t textureCoordinatesByteCount = sizeof(decltype(textureCoordinates)::value_type) * textureCoordinates.size();
     std::size_t indicesByteCount = sizeof(decltype(indices)::value_type) * indices.size();
-    std::size_t materialIndicesByteCount = sizeof(decltype(materialIndices)::value_type) * materialIndices.size();
+    std::size_t trianglesByteCount = sizeof(decltype(triangles)::value_type) * triangles.size();
+    std::size_t normalsByteCount = sizeof(std::remove_reference_t<decltype(normals)>::value_type) * normals.size();
     std::size_t materialsByteCount = sizeof(decltype(materials)::value_type) * materials.size();
     std::size_t randomInputStateByteCount = sizeof(decltype(randomInputState)::value_type) * randomInputState.size();
 
@@ -332,14 +340,14 @@ public:
     vertexBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, verticesByteCount, accelerationStructureBufferUsageFlags, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
     vertexBuffer->write((void*)vertices.data(), verticesByteCount);
 
-    textureCoordinatesBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, textureCoordinatesByteCount, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-    textureCoordinatesBuffer->write((void*)textureCoordinates.data(), textureCoordinatesByteCount);
-
     indexBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, indicesByteCount, accelerationStructureBufferUsageFlags, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
     indexBuffer->write((void*)indices.data(), indicesByteCount);
 
-    materialIndicesBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, materialIndicesByteCount, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-    materialIndicesBuffer->write((void*)materialIndices.data(), materialIndicesByteCount);
+    trianglesBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, trianglesByteCount, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+    trianglesBuffer->write((void*)triangles.data(), trianglesByteCount);
+
+    normalBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, normalsByteCount, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+    normalBuffer->write((void*)normals.data(), normalsByteCount);
 
     materialBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, materialsByteCount, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
     materialBuffer->write((void*)materials.data(), materialsByteCount);
@@ -546,9 +554,8 @@ public:
     std::vector<VkDescriptorPoolSize> poolSizes = {
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1),  // tlas
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1), // Vertices
-      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1), // TextureCoordinates
-      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1), // Indices
-      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1), // MaterialIndices
+      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1), // TriangleData
+      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1), // Normals
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1), // Materials
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, albedoImages.size()), // albedoTextures
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, metallicImages.size()), // metallicTextures
@@ -565,9 +572,8 @@ public:
     std::vector<VkDescriptorSetLayoutBinding> setLayoutBindings = {
       vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, VK_SHADER_STAGE_COMPUTE_BIT, 0), // tlas
       vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 1),  // Vertices
-      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 2),  // TextureCoordinates
-      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 3), // Indices
-      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 4), // MaterialIndices
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 2),  // TriangleData
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 3),  // Normals
       vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 5), // Materials
       vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_COMPUTE_BIT, 6, albedoImages.size()), // albedoTextures
       vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_COMPUTE_BIT, 7, metallicImages.size()), // metallicTextures
@@ -591,9 +597,8 @@ public:
     writeDescriptorSetAccelerationStructureKHR.pAccelerationStructures = &accelerationStructureTopLevel;
 
     VkDescriptorBufferInfo vertexDescriptorBufferInfo = vertexBuffer->descriptorBufferInfo();
-    VkDescriptorBufferInfo textureCoordinatesDescriptorBufferInfo = textureCoordinatesBuffer->descriptorBufferInfo();
-    VkDescriptorBufferInfo indexDescriptorBufferInfo = indexBuffer->descriptorBufferInfo();
-    VkDescriptorBufferInfo materialIndicesDescriptorBufferInfo = materialIndicesBuffer->descriptorBufferInfo();
+    VkDescriptorBufferInfo trianglesDescriptorBufferInfo = trianglesBuffer->descriptorBufferInfo();
+    VkDescriptorBufferInfo normalDescriptorBufferInfo = normalBuffer->descriptorBufferInfo();
     VkDescriptorBufferInfo materialDescriptorBufferInfo = materialBuffer->descriptorBufferInfo();
 
     std::vector<VkDescriptorImageInfo> albedoImagesDescriptorBufferInfos(albedoImages.size());
@@ -620,9 +625,8 @@ public:
     std::vector<VkWriteDescriptorSet> computeWriteDescriptorSets = {
       writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 0, &writeDescriptorSetAccelerationStructureKHR), // tlas
       vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, &vertexDescriptorBufferInfo),  // Vertices
-      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2, &textureCoordinatesDescriptorBufferInfo),  // TextureCoordinates
-      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3, &indexDescriptorBufferInfo),  // Indices
-      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 4, &materialIndicesDescriptorBufferInfo), // MaterialIndices
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2, &trianglesDescriptorBufferInfo),  // TriangleData
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 3, &normalDescriptorBufferInfo),  // TriangleData
       vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 5, &materialDescriptorBufferInfo), // Materials
       vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 6, albedoImagesDescriptorBufferInfos.data(), albedoImagesDescriptorBufferInfos.size()), // albedoTextures
       vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 7, metallicImagesDescriptorBufferInfos.data(), metallicImages.size()), // metallicTextures
@@ -805,9 +809,9 @@ private:
   std::unique_ptr<VulkanBuffer> vertexBuffer;
   std::size_t vertexCount;
   std::size_t faceCount;
-  std::unique_ptr<VulkanBuffer> textureCoordinatesBuffer;
   std::unique_ptr<VulkanBuffer> indexBuffer;
-  std::unique_ptr<VulkanBuffer> materialIndicesBuffer;
+  std::unique_ptr<VulkanBuffer> trianglesBuffer;
+  std::unique_ptr<VulkanBuffer> normalBuffer;
   std::unique_ptr<VulkanBuffer> materialBuffer;
   std::unique_ptr<VulkanBuffer> randomInputStateBuffer;
   std::vector<std::unique_ptr<VulkanBuffer> > albedoImageBuffers;

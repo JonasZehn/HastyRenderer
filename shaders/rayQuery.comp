@@ -14,6 +14,13 @@ struct Material {
 	float indexOfRefraction;
 };
 
+struct TriangleData {
+	uint vertexIndices[3];
+	uint materialIndex;
+	vec2 textureCoordinates[3];
+	int normalIndices[3];
+};
+
 layout(local_size_x = 4, local_size_y = 4, local_size_z = 1) in;
 
 layout(binding = 0, set = 0) uniform accelerationStructureEXT tlas;
@@ -22,18 +29,13 @@ layout(binding = 1, set = 0, scalar) buffer Vertices
 {
 	vec3 vertices[];
 };
-layout(binding = 2, set = 0, scalar) buffer TextureCoordinates
+layout(binding = 2, set = 0, scalar) buffer Triangles
 {
-	vec2 textureCoordinates[];
+	TriangleData triangles[];
 };
-layout(binding = 3, set = 0, scalar) buffer Indices
+layout(binding = 3, set = 0, scalar) buffer Normals
 {
-	uint indices[];
-};
-
-layout(binding = 4, set = 0, scalar) buffer MaterialIndices
-{
-	uint materialIndices[];
+	vec3 normals[];
 };
 
 layout(binding = 5, set = 0, scalar) buffer Materials
@@ -155,6 +157,7 @@ struct LightRay {
 
 struct SurfaceInteraction {
 	int primitiveID;
+	uint materialIndex;
 	vec3 x;
 	vec3 normalGeometric;
 	vec2 uv;
@@ -1071,38 +1074,52 @@ void cameraRay(HASTY_INOUT(RNG) rng, vec2 pixelPosition, vec2 frameSize, out vec
 //////// Scene.cpp
 
 SurfaceInteraction getSurfaceInteraction(rayQueryEXT rayQuery){
-	SurfaceInteraction result;
 	
-	result.primitiveID = rayQueryGetIntersectionPrimitiveIndexEXT(rayQuery, true);
+	SurfaceInteraction interaction;
+	
+	interaction.primitiveID = rayQueryGetIntersectionPrimitiveIndexEXT(rayQuery, true);
 	vec2 barycentrics2 = rayQueryGetIntersectionBarycentricsEXT(rayQuery, true);
 	float b0 = 1.0 - barycentrics2[0] - barycentrics2[1];
 	vec3 barycentricCoordinates = vec3(b0, barycentrics2);
 	
-	uint vtxIdx0 = indices[3 * result.primitiveID];
-	uint vtxIdx1 = indices[3 * result.primitiveID + 1];
-	uint vtxIdx2 = indices[3 * result.primitiveID + 2];
+	TriangleData triangle = triangles[interaction.primitiveID];
+	
+	uint vtxIdx0 = triangle.vertexIndices[0];
+	uint vtxIdx1 = triangle.vertexIndices[1];
+	uint vtxIdx2 = triangle.vertexIndices[2];
 
 	vec3 v0 = vertices[vtxIdx0];
 	vec3 v1 = vertices[vtxIdx1];
 	vec3 v2 = vertices[vtxIdx2];
 	
-	vec2 uv0 = textureCoordinates[3 * result.primitiveID];
-	vec2 uv1 = textureCoordinates[3 * result.primitiveID + 1];
-	vec2 uv2 = textureCoordinates[3 * result.primitiveID + 2];
+	vec2 uv0 = triangle.textureCoordinates[0];
+	vec2 uv1 = triangle.textureCoordinates[1];
+	vec2 uv2 = triangle.textureCoordinates[2];
 	
-	result.x = barycentricCoordinates[0] * v0 + barycentricCoordinates[1] * v1 + barycentricCoordinates[2] * v2;
-	result.uv = barycentricCoordinates[0] * uv0 + barycentricCoordinates[1] * uv1 + barycentricCoordinates[2] * uv2;
-	result.uvInverted = vec2(result.uv.x, 1.0 - result.uv.y);
+	interaction.x = barycentricCoordinates[0] * v0 + barycentricCoordinates[1] * v1 + barycentricCoordinates[2] * v2;
+	interaction.uv = barycentricCoordinates[0] * uv0 + barycentricCoordinates[1] * uv1 + barycentricCoordinates[2] * uv2;
+	interaction.uvInverted = vec2(interaction.uv.x, 1.0 - interaction.uv.y);
 	
 	vec3 m = cross(v1 - v0, v2 - v0);
-	result.normalGeometric = normalize(m);
+	interaction.normalGeometric = normalize(m);
 	
-	result.tangent = anyOrthonormal(result.normalGeometric);
-	result.bitangent = cross(result.normalGeometric, result.tangent);
+	interaction.tangent = anyOrthonormal(interaction.normalGeometric);
+	interaction.bitangent = cross(interaction.normalGeometric, interaction.tangent);
+	interaction.materialIndex = triangle.materialIndex;
 	
-	result.normalShadingDefault = result.normalGeometric;
+	bool smoothNormals = triangle.normalIndices[0] != -1;
+	if(smoothNormals){
+		vec3 nv0 = normals[triangle.normalIndices[0]];
+		vec3 nv1 = normals[triangle.normalIndices[1]];
+		vec3 nv2 = normals[triangle.normalIndices[2]];
+		interaction.normalShadingDefault = barycentricCoordinates[0] * nv0 + barycentricCoordinates[1] * nv1 + barycentricCoordinates[2] * nv2;
+		interaction.normalShadingDefault = normalize(interaction.normalShadingDefault);
+	} else {
+		interaction.normalShadingDefault = interaction.normalGeometric;
+	}
+
 	
-	return result;
+	return interaction;
 }
 
 vec3 getEmissionRadiance(vec3 wo, vec3 normal, Material material){
@@ -1163,7 +1180,7 @@ void main()
 					vec3 wo = -rayDirection;
 					throughput *= beersLaw(getTransmittance(lightRay), norm(interaction.x - rayOrigin));
 					
-					uint materialIdx = materialIndices[interaction.primitiveID];
+					uint materialIdx = interaction.materialIndex;
 					int mediumId = int(materialIdx); // this currently works because in practice it only depends on the material and all material ids will have same transmittance
 					Material material = materials[materialIdx];
 					

@@ -404,6 +404,10 @@ const std::vector<float>& Scene::getVertices() const
 {
   return reader.GetAttrib().vertices;
 }
+const std::vector<float>& Scene::getNormals() const
+{
+  return reader.GetAttrib().normals;
+}
 std::size_t Scene::getTriangleCount(std::size_t geomID) const
 {
   const std::vector<tinyobj::shape_t>& shapes = reader.GetShapes();
@@ -418,6 +422,24 @@ std::array<int, 3> Scene::getTriangleVertexIndices(std::size_t geomID, std::size
     shapes[geomID].mesh.indices[3 * primID + 0].vertex_index,
     shapes[geomID].mesh.indices[3 * primID + 1].vertex_index,
     shapes[geomID].mesh.indices[3 * primID + 2].vertex_index
+  };
+  return idcs;
+}
+std::array<int, 3> Scene::getTriangleNormalIndices(std::size_t geomID, std::size_t primID) const
+{
+  const tinyobj::attrib_t& attrib = reader.GetAttrib();
+  const std::vector<tinyobj::shape_t>& shapes = reader.GetShapes();
+
+  bool smoothNormalTangents = shapes[geomID].mesh.smoothing_group_ids[primID] != 0;
+  if(!smoothNormalTangents)
+  {
+    std::array<int, 3> nullIdcs = { -1, -1, -1 };
+    return nullIdcs;
+  }
+  std::array<int, 3> idcs = {
+    shapes[geomID].mesh.indices[3 * primID + 0].normal_index,
+    shapes[geomID].mesh.indices[3 * primID + 1].normal_index,
+    shapes[geomID].mesh.indices[3 * primID + 2].normal_index
   };
   return idcs;
 }
