@@ -37,6 +37,8 @@ public:
     return color == Vec3f::Zero();
   }
 
+  Vec3f getColor() const { return color; }
+
 private:
   Vec3f color;
 

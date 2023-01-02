@@ -38,7 +38,8 @@ struct MaterialUniformBufferObject
 };
 struct PushConstantsSample
 {
-  int32_t nSamples;
+  alignas(4) int32_t nSamples;
+  alignas(4) Vec3f backgroundColor;
 };
 
 
@@ -191,7 +192,7 @@ public:
     return nullptr;
   }
 
-  void transferDataToGPU(Scene& scene, uint32_t renderWidth, uint32_t renderHeight)
+  void transferDataToGPU(Scene& scene, uint32_t renderWidth, uint32_t renderHeight, Vec3f& backgroundColor)
   {
     std::vector<float> vertices = scene.getVertices();
     std::vector<std::size_t> geometryIDs = scene.getGeometryIDs();
@@ -209,6 +210,14 @@ public:
     materialIndices.reserve(faceCount);
     std::vector<MaterialUniformBufferObject> materials;
     materials.reserve(scene.getMaterialCount());
+
+    backgroundColor = Vec3f::Zero();
+
+    BackgroundColor const * backgroundColorObject = dynamic_cast<BackgroundColor const *>(&scene.getBackground());
+    if(backgroundColorObject != nullptr)
+    {
+      backgroundColor = backgroundColorObject->getColor();
+    }
 
     for(int materialIdx = 0; materialIdx < scene.getMaterialCount(); materialIdx++)
     {
@@ -508,7 +517,7 @@ public:
     buildTopLevel();
   }
 
-  void buildComputeCommandBuffer(VkCommandBuffer commandBuffer, int32_t numSamplesPerRun, uint32_t width, uint32_t height)
+  void buildComputeCommandBuffer(VkCommandBuffer commandBuffer, int32_t numSamplesPerRun, const Vec3f& backgroundColor, uint32_t width, uint32_t height)
   {
     VkCommandBufferBeginInfo commandBufferBeginInfo = vks::initializers::commandBufferBeginInfo();
 
@@ -518,6 +527,7 @@ public:
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descriptorSet, 0, 0);
     PushConstantsSample pushConstants;
     pushConstants.nSamples = numSamplesPerRun;
+    pushConstants.backgroundColor = backgroundColor;
     vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(PushConstantsSample), &pushConstants);
 
     uint32_t layoutSizeX = 4;
@@ -676,11 +686,12 @@ public:
 
     VulkanBuffer outputImageBuffer(deviceAndQueue, bufferSizeBytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
-    transferDataToGPU(*job.scene, renderWidth, renderHeight);
+    Vec3f backgroundColor;
+    transferDataToGPU(*job.scene, renderWidth, renderHeight, backgroundColor);
     buildAccelerationStructure();
 
     VkClearColorValue clearColorValue;
-    for(int i=0; i<4; i++) clearColorValue.float32[i] = 0.0;
+    for(int i = 0; i < 4; i++) clearColorValue.float32[i] = 0.0;
 
     VulkanImage colorImageGPU = allocateDeviceImage(deviceAndQueue, VK_FORMAT_R32G32B32A32_SFLOAT, renderWidth, renderHeight, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
     deviceAndQueue->transitionImageLayoutAndClear(colorImageGPU, VK_IMAGE_LAYOUT_GENERAL, clearColorValue);
@@ -702,7 +713,7 @@ public:
     int sumSamples = 0;
     for(int i = 0; i < nRuns; i++)
     {
-      int nSamplesThisRun = i == nRuns -1 ? nSamples - nSamplesPerRun * (nRuns - 1)  : nSamplesPerRun;
+      int nSamplesThisRun = i == nRuns - 1 ? nSamples - nSamplesPerRun * (nRuns - 1) : nSamplesPerRun;
       sumSamples += nSamplesThisRun;
 
       VkCommandBuffer commandBuffer{ nullptr };
@@ -719,7 +730,7 @@ public:
       VkSemaphoreCreateInfo semaphoreCreateInfo{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
       VK_CHECK_RESULT(vkCreateSemaphore(logicalDevice, &semaphoreCreateInfo, nullptr, &newSemaphore));
 
-      buildComputeCommandBuffer(commandBuffer, nSamplesThisRun, colorImageGPU.getWidth(), colorImageGPU.getHeight());
+      buildComputeCommandBuffer(commandBuffer, nSamplesThisRun, backgroundColor, colorImageGPU.getWidth(), colorImageGPU.getHeight());
 
       VkPipelineStageFlags waitStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 

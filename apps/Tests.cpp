@@ -44,8 +44,8 @@ TEST(vmath, rodriguesRotation)
   float pDensity;
   RotationBetweenTwoVectors<float, Vec3f> rot(sampleSphereSurfaceUniformly(rng, pDensity), sampleSphereSurfaceUniformly(rng, pDensity));
   Vec3f x0 = rng.uniform01Vec3f();
-  Vec3f x1 = rot * x0;
-  Vec3f x0prime = rot.applyInverse(x1);
+  Vec3f x1 = applyRotation(rot, x0);
+  Vec3f x0prime = applyRotationInverse(rot, x1);
   EXPECT_NEAR(x0[0], x0prime[0], 1e-4f);
   EXPECT_NEAR(x0[1], x0prime[1], 1e-4f);
   EXPECT_NEAR(x0[2], x0prime[2], 1e-4f);

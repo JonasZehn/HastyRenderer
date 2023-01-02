@@ -69,9 +69,10 @@ layout(binding = 11, set = 0, rgba32f) uniform image2D colorImage;
 layout(binding = 12, set = 0, rgba32f) uniform image2D normalImage;
 layout(binding = 13, set = 0, rgba32f) uniform image2D albedoImage;
 
-layout( push_constant ) uniform PushConstants // guarantueed to be 128 bytes
+layout( push_constant, scalar ) uniform PushConstants // guarantueed to be at least 128 bytes
 {
 	int nSamples;
+	vec3 backgroundColor;
 };
 
 //////// VMath.h
@@ -1207,6 +1208,9 @@ void main()
 					bool afterOutside = sampleResult.outside; // wrt geometric normal
 					updateMedium(lightRay, beforeOutside, afterOutside, mediumId, albedoHit, indexOfRefractionMat);
 				} else {
+					throughput *= beersLaw(getTransmittance(lightRay), 1e6f);
+					vec3 Le = backgroundColor;
+					colorSample += throughput * Le;
 					break;
 				}
 				

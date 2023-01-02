@@ -57,7 +57,6 @@ class Scene
 {
 public:
   Camera camera;
-  std::unique_ptr<Background> background;
 
   Scene(std::filesystem::path inputfilePath);
   ~Scene();
@@ -101,6 +100,7 @@ public:
   Vec3f getEmissionRadiance(const Vec3f& wo, unsigned int geomID, unsigned int primID) const;
   Vec3f getEmissionRadiance(const Vec3f& wo, const RayHit& hit) const;
   Vec3f getAlbedo(const SurfaceInteraction& interaction) const;
+  const Background& getBackground() const { return *background; }
   Vec3f evalEnvironment(const Ray& ray);
   bool hasLight() const;
   bool hasSurfaceLight() const;
@@ -118,6 +118,7 @@ protected:
   RTCDevice m_device;
   RTCScene m_embreeScene;
 
+  std::unique_ptr<Background> background;
   tinyobj::ObjReader reader;
   std::unique_ptr<std::discrete_distribution<uint32_t> > lightDistribution;
   std::vector<std::array<std::size_t, 2> > lightTriangles;
