@@ -5,16 +5,6 @@
 
 #define HASTY_OUT(type) out type
 #define HASTY_INOUT(type) inout type
-#define HASTY_POWCI(v, constantIntegerExponent) pow(v, constantIntegerExponent);
-
-float square(float f){ return f*f; }
-
-float norm(vec2 f){ return sqrt(dot(f,f)); }
-float norm(vec3 f){ return sqrt(dot(f,f)); }
-float norm(vec4 f){ return sqrt(dot(f,f)); }
-
-const float Pi = 3.14159265358979323846;
-const float InvPi = 0.318309886183790671;
 
 struct Material {
 	vec3 emission;
@@ -84,6 +74,73 @@ layout( push_constant ) uniform PushConstants // guarantueed to be 128 bytes
 	int nSamples;
 };
 
+//////// VMath.h
+
+const float Pi = 3.14159265358979323846;
+const float InvPi = 0.318309886183790671;
+	
+float square(float f){ return f*f; }
+
+float norm(vec2 f){ return sqrt(dot(f,f)); }
+float norm(vec3 f){ return sqrt(dot(f,f)); }
+float norm(vec4 f){ return sqrt(dot(f,f)); }
+
+float normSq(vec3 v){ return dot(v, v); }
+
+vec3 orthonormalized(vec3 v1Normalized, vec3 v2)
+{
+	vec3 result = v2 - dot(v2, v1Normalized) * v1Normalized;
+	return normalize(result);
+}
+
+vec3 anyOrthonormal(vec3 v1Normalized)
+{
+	if (abs(v1Normalized.x) < 0.7f)
+	{
+		return orthonormalized(v1Normalized, vec3(1.0f, 0.0f, 0.0f));
+	}
+	else
+	{
+		return orthonormalized(v1Normalized, vec3(0.0f, 1.0f, 0.0f));
+	}
+}
+vec3 reflectAcross(vec3 outgoing, vec3 N)
+{
+	return reflect(-outgoing, N); // -outgoing + 2.0f * dot(N, outgoing) * N;
+}
+
+struct RotationBetweenTwoVectors{
+	float a;
+	vec3 b;
+	vec3 c;
+	vec3 d;
+};
+RotationBetweenTwoVectors RotationBetweenTwoVectorsConstruct(vec3 vFrom, vec3 vTo)
+{
+	RotationBetweenTwoVectors result;
+	
+	float cosAngle = dot(vFrom, vTo);
+	float onePlusCosAngle = float(1.0) + cosAngle;
+	
+	// v_rot = x * cos(angle) + (k sin(angle) cross x + (k sin(angle) )  ( (k sin(angle) ) dot x ) / (1 + cos(angle))
+	vec3 kSinAngle = cross(vFrom, vTo);
+	bool inversion = abs(onePlusCosAngle) <= 1e-6;
+	vec3 kOrthogonal = anyOrthonormal(vFrom); // find rotation axis so we don't invert volume
+	
+	result.a = inversion ? -1.0 : cosAngle;
+	result.b = inversion ? vec3(0.0) : kSinAngle;
+	result.c = inversion ? kOrthogonal : kSinAngle;
+	result.d = inversion ? (kOrthogonal * 2.0) : (kSinAngle / onePlusCosAngle);
+	
+	return result;
+}
+vec3 applyRotation(RotationBetweenTwoVectors rotation, vec3 x)
+{
+  return x * rotation.a + cross(rotation.b, x) + rotation.c * dot(rotation.d, x);
+}
+
+//////// LightRayInfo.h
+
 struct MediumInfo {
 	int mediumId;
 	vec3 transmittance;
@@ -92,6 +149,22 @@ struct MediumInfo {
 struct LightRay {
 	MediumInfo mediumInfo[3]; // only support number of overlapping media
 };
+
+//////// Scene.h
+
+struct SurfaceInteraction {
+	int primitiveID;
+	vec3 x;
+	vec3 normalGeometric;
+	vec2 uv;
+	vec2 uvInverted;
+	vec3 tangent;
+	vec3 bitangent;
+	vec3 normalShadingDefault;
+};
+
+
+//////// LightRayInfo.cpp
 
 LightRay LightRayConstruct()
 {
@@ -151,6 +224,8 @@ void updateMedium(inout LightRay lightRay, bool beforeOutside, bool afterOutside
 	}
 }
 
+//////// PathTracing.h
+
 vec3 beersLaw(vec3 transmittance, float d)
 {
 	if(transmittance == vec3(1.0)) return vec3(1.0); // hot code path
@@ -165,6 +240,9 @@ vec3 beersLaw(vec3 transmittance, float d)
 	//assertFinite(result);
 	return result;
 }
+
+
+//////// Random.h
 
 struct HaltonSequence1 {
 	int b;
@@ -255,61 +333,55 @@ float uniform01f(inout RNG rng){
 	return randomNumber * 2.3283064365386962890625e-10; // 2^-32
 }
 
-vec3 orthonormalized(vec3 v1Normalized, vec3 v2)
+
+//////// BRDF.h 
+
+struct MaterialEvalResult
 {
-	vec3 result = v2 - dot(v2, v1Normalized) * v1Normalized;
-	return normalize(result);
-}
-
-vec3 anyOrthonormal(vec3 v1Normalized)
-{
-	if (abs(v1Normalized.x) < 0.7f)
-	{
-		return orthonormalized(v1Normalized, vec3(1.0f, 0.0f, 0.0f));
-	}
-	else
-	{
-		return orthonormalized(v1Normalized, vec3(0.0f, 1.0f, 0.0f));
-	}
-}
-vec3 reflectAcross(vec3 outgoing, vec3 N)
-{
-	return reflect(-outgoing, N); // -outgoing + 2.0f * dot(N, outgoing) * N;
-}
-
-float normSq(vec3 v){ return dot(v, v); }
-
-
-struct RotationBetweenTwoVectors{
-	float a;
-	vec3 b;
-	vec3 c;
-	vec3 d;
+	vec3 fDiffuse;
+	vec3 fConcentrated;
+	vec3 normalShading;
 };
-RotationBetweenTwoVectors RotationBetweenTwoVectorsConstruct(vec3 vFrom, vec3 vTo)
+struct SampleResult
 {
-	RotationBetweenTwoVectors result;
-	
-	float cosAngle = dot(vFrom, vTo);
-	float onePlusCosAngle = float(1.0) + cosAngle;
-	
-	// v_rot = x * cos(angle) + (k sin(angle) cross x + (k sin(angle) )  ( (k sin(angle) ) dot x ) / (1 + cos(angle))
-	vec3 kSinAngle = cross(vFrom, vTo);
-	bool inversion = abs(onePlusCosAngle) <= 1e-6;
-	vec3 kOrthogonal = anyOrthonormal(vFrom); // find rotation axis so we don't invert volume
-	
-	result.a = inversion ? -1.0 : cosAngle;
-	result.b = inversion ? vec3(0.0) : kSinAngle;
-	result.c = inversion ? kOrthogonal : kSinAngle;
-	result.d = inversion ? (kOrthogonal * 2.0) : (kSinAngle / onePlusCosAngle);
-	
+	bool outside;
+	vec3 direction;
+	vec3 throughputDiffuse;
+	vec3 throughputConcentrated;
+	float pdfOmega;
+	vec3 debug;
+};
+
+MaterialEvalResult MaterialEvalResultConstruct(vec3 d, vec3 s, vec3 n)
+{
+	MaterialEvalResult result;
+	result.fDiffuse = d;
+	result.fConcentrated = s;
+	result.normalShading = n;
 	return result;
 }
-vec3 applyRotation(RotationBetweenTwoVectors rotation, vec3 x)
-{
-  return x * rotation.a + cross(rotation.b, x) + rotation.c * dot(rotation.d, x);
-}
 
+//enum class ShaderEvalFlag
+//{
+//  NONE = 0,
+//  DIFFUSE = 1,
+//  CONCENTRATED = 2,
+//  ALL = DIFFUSE | CONCENTRATED
+//};
+
+struct PrincipledBRDFProbabilityResult
+{
+	bool noStrategy;
+	float pDiffuseStrategy;
+	float pSpecularStrategy;
+	float pRefractiveStrategy;
+	bool refractionPossible;
+	float FDaccurate;
+	float cosT;
+};
+
+
+//////// Sample.cpp
 
 vec2 sampleDiskUniformly(HASTY_INOUT(RNG) rng, HASTY_OUT(float) pDensity)
 {
@@ -381,104 +453,11 @@ float evaluateHemisphereCosImportancePDF(vec3 normal, vec3 direction)
 	return InvPi * cosTheta;
 }
 
-struct SurfaceInteraction {
-	int primitiveID;
-	vec3 x;
-	vec3 normalGeometric;
-	vec2 uv;
-	vec2 uvInverted;
-	vec3 tangent;
-	vec3 bitangent;
-	vec3 normalShadingDefault;
-};
-SurfaceInteraction getSurfaceInteraction(rayQueryEXT rayQuery){
-	SurfaceInteraction result;
-	
-	result.primitiveID = rayQueryGetIntersectionPrimitiveIndexEXT(rayQuery, true);
-	vec2 barycentrics2 = rayQueryGetIntersectionBarycentricsEXT(rayQuery, true);
-	float b0 = 1.0 - barycentrics2[0] - barycentrics2[1];
-	vec3 barycentricCoordinates = vec3(b0, barycentrics2);
-	
-	uint vtxIdx0 = indices[3 * result.primitiveID];
-	uint vtxIdx1 = indices[3 * result.primitiveID + 1];
-	uint vtxIdx2 = indices[3 * result.primitiveID + 2];
-
-	vec3 v0 = vertices[vtxIdx0];
-	vec3 v1 = vertices[vtxIdx1];
-	vec3 v2 = vertices[vtxIdx2];
-	
-	vec2 uv0 = textureCoordinates[3 * result.primitiveID];
-	vec2 uv1 = textureCoordinates[3 * result.primitiveID + 1];
-	vec2 uv2 = textureCoordinates[3 * result.primitiveID + 2];
-	
-	result.x = barycentricCoordinates[0] * v0 + barycentricCoordinates[1] * v1 + barycentricCoordinates[2] * v2;
-	result.uv = barycentricCoordinates[0] * uv0 + barycentricCoordinates[1] * uv1 + barycentricCoordinates[2] * uv2;
-	result.uvInverted = vec2(result.uv.x, 1.0 - result.uv.y);
-	
-	vec3 m = cross(v1 - v0, v2 - v0);
-	result.normalGeometric = normalize(m);
-	
-	result.tangent = anyOrthonormal(result.normalGeometric);
-	result.bitangent = cross(result.normalGeometric, result.tangent);
-	
-	result.normalShadingDefault = result.normalGeometric;
-	
-	return result;
-}
-
-vec3 getEmissionRadiance(vec3 wo, vec3 normal, Material material){
-	return dot(wo, normal) >= 0.0 ? material.emission * InvPi : vec3(0.0);
-}
-
-
-struct MaterialEvalResult
-{
-	vec3 fDiffuse;
-	vec3 fConcentrated;
-	vec3 normalShading;
-};
-struct SampleResult
-{
-	bool outside;
-	vec3 direction;
-	vec3 throughputDiffuse;
-	vec3 throughputConcentrated;
-	float pdfOmega;
-	vec3 debug;
-};
-
-
-MaterialEvalResult MaterialEvalResultConstruct(vec3 d, vec3 s, vec3 n)
-{
-	MaterialEvalResult result;
-	result.fDiffuse = d;
-	result.fConcentrated = s;
-	result.normalShading = n;
-	return result;
-}
-
-////////BRDF.h 
-
-//enum class ShaderEvalFlag
-//{
-//  NONE = 0,
-//  DIFFUSE = 1,
-//  CONCENTRATED = 2,
-//  ALL = DIFFUSE | CONCENTRATED
-//};
-
-struct PrincipledBRDFProbabilityResult
-{
-	bool noStrategy;
-	float pDiffuseStrategy;
-	float pSpecularStrategy;
-	float pRefractiveStrategy;
-	bool refractionPossible;
-	float FDaccurate;
-	float cosT;
-};
 
 //////// BRDF.cpp
+
+#define HASTY_POWCI(v, constantIntegerExponent) pow(v, constantIntegerExponent);
+
 bool computeRefractionDirection(vec3 wi, vec3 normal, float indexOfRefraction_i, float indexOfRefraction_t, HASTY_OUT(vec3) wt)
 {
 	// t stands for transmittance
@@ -695,7 +674,6 @@ float sampleGGXVNDFGlobalDensity(vec3 normal, float alpha_t, float alpha_b, vec3
 	float pDensityH = G1 * max(0.0f, dot(dir1, NeGlobal)) * D_ggx / dot(dir1, normal);
 	return pDensityH / (1e-7f + 4.0f * abs(dot(dir1, NeGlobal)));
 }
-
 
 float signSide(float dotNW)
 {
@@ -1066,12 +1044,14 @@ vec3 PrincipledBRDFgetShadingNormal(SurfaceInteraction interaction, vec3 wo, flo
 	return normalShading;
 }
 
-// p = pixelPosition
-void cameraRay(HASTY_INOUT(RNG) rng, vec2 p, vec2 frameSize, out vec3 origin, out vec3 direction){
+
+//////// Camera.cpp
+
+void cameraRay(HASTY_INOUT(RNG) rng, vec2 pixelPosition, vec2 frameSize, out vec3 origin, out vec3 direction){
 	// we aren't doing	a "physical" lense for now
 	 // focal plane is at m_position + m_forward * m_focal distance
 	// we move origin of the ray randomly, but on the focal plane these rays have to hit the same point independent of the random offset
-	vec2 lam = (2.0f * p - frameSize) / frameSize.x;
+	vec2 lam = (2.0f * pixelPosition - frameSize) / frameSize.x;
 	direction = camera.forward + camera.right * (camera.fovSlope * lam.x) - camera.up * (camera.fovSlope * lam.y);
 	direction = normalize(direction);
 	if(camera.apertureSize > 0.0){
@@ -1086,39 +1066,75 @@ void cameraRay(HASTY_INOUT(RNG) rng, vec2 p, vec2 frameSize, out vec3 origin, ou
 		origin = camera.position;
 	}
 }
-	  
-	  
+
+//////// Scene.cpp
+
+SurfaceInteraction getSurfaceInteraction(rayQueryEXT rayQuery){
+	SurfaceInteraction result;
+	
+	result.primitiveID = rayQueryGetIntersectionPrimitiveIndexEXT(rayQuery, true);
+	vec2 barycentrics2 = rayQueryGetIntersectionBarycentricsEXT(rayQuery, true);
+	float b0 = 1.0 - barycentrics2[0] - barycentrics2[1];
+	vec3 barycentricCoordinates = vec3(b0, barycentrics2);
+	
+	uint vtxIdx0 = indices[3 * result.primitiveID];
+	uint vtxIdx1 = indices[3 * result.primitiveID + 1];
+	uint vtxIdx2 = indices[3 * result.primitiveID + 2];
+
+	vec3 v0 = vertices[vtxIdx0];
+	vec3 v1 = vertices[vtxIdx1];
+	vec3 v2 = vertices[vtxIdx2];
+	
+	vec2 uv0 = textureCoordinates[3 * result.primitiveID];
+	vec2 uv1 = textureCoordinates[3 * result.primitiveID + 1];
+	vec2 uv2 = textureCoordinates[3 * result.primitiveID + 2];
+	
+	result.x = barycentricCoordinates[0] * v0 + barycentricCoordinates[1] * v1 + barycentricCoordinates[2] * v2;
+	result.uv = barycentricCoordinates[0] * uv0 + barycentricCoordinates[1] * uv1 + barycentricCoordinates[2] * uv2;
+	result.uvInverted = vec2(result.uv.x, 1.0 - result.uv.y);
+	
+	vec3 m = cross(v1 - v0, v2 - v0);
+	result.normalGeometric = normalize(m);
+	
+	result.tangent = anyOrthonormal(result.normalGeometric);
+	result.bitangent = cross(result.normalGeometric, result.tangent);
+	
+	result.normalShadingDefault = result.normalGeometric;
+	
+	return result;
+}
+
+vec3 getEmissionRadiance(vec3 wo, vec3 normal, Material material){
+	return dot(wo, normal) >= 0.0 ? material.emission * InvPi : vec3(0.0);
+}
+
+
+
 void main()
 {
 	ivec2 size = imageSize(colorImage);
 	ivec2 loc = ivec2(gl_GlobalInvocationID.xy);
-	uint pixelLinearIndex = size[0] * loc[1] + loc[0];
 	
-	uint seed0 = randomInputState[3 * pixelLinearIndex + 0];
-	uint seed1 = randomInputState[3 * pixelLinearIndex + 1];
-	uint seed2 = randomInputState[3 * pixelLinearIndex + 2];
-	
-	RNG rng = RNGConstruct(seed0, seed1, seed2);
-	
-	ivec4 imageExtent = { 0, 0, size[0], size[1] };
-	
-	if(loc.x >= imageExtent[0] && loc.y >= imageExtent[1] 
-		&& loc.x < imageExtent[2] && loc.y < imageExtent[3])
+	if(loc.x < size[0] && loc.y < size[1])
 	{
-		//vec3 sumColorSamples = imageLoad(colorImage, loc).xyz;
-		//vec3 sumNormalSamples = imageLoad(normalImage, loc).xyz;
-		//vec3 sumAlbedoSamples = imageLoad(albedoImage, loc).xyz;
-		vec3 sumColorSamples = vec3(0.0);
-		vec3 sumNormalSamples = vec3(0.0);
-		vec3 sumAlbedoSamples = vec3(0.0);
+		uint pixelLinearIndex = size[0] * loc[1] + loc[0];
 		
-		HaltonSequence2 pixelPositionSeq = HaltonSequence2Construct();
-		for(int sampleIdx=0; sampleIdx < nSamples; sampleIdx++){
+		uint seed0 = randomInputState[3 * pixelLinearIndex + 0];
+		uint seed1 = randomInputState[3 * pixelLinearIndex + 1];
+		uint seed2 = randomInputState[3 * pixelLinearIndex + 2];
+		
+		vec3 sumColorSamples = imageLoad(colorImage, loc).xyz;
+		vec3 sumNormalSamples = imageLoad(normalImage, loc).xyz;
+		vec3 sumAlbedoSamples = imageLoad(albedoImage, loc).xyz;
+		
+		RNG rng = RNGConstruct(seed0, seed1, seed2);
+		
+		for(int sampleIdx = 0; sampleIdx < nSamples; sampleIdx++){
 		
 			vec3 colorSample = vec3(0.0);
 			vec3 throughput = vec3(1.0);
 			
-			const vec2 pixelPosition = vec2(loc) + HaltonSequence2Update(pixelPositionSeq);
+			const vec2 pixelPosition = vec2(loc) + vec2(uniform01f(rng), uniform01f(rng));
 			vec3 rayOrigin, rayDirection;
 			cameraRay(rng, pixelPosition, size, rayOrigin, rayDirection);
 			LightRay lightRay = LightRayConstruct();
@@ -1204,6 +1220,10 @@ void main()
 			
 			sumColorSamples += colorSample;
 		}
+		
+		randomInputState[3 * pixelLinearIndex + 0] = rng.s1;
+		randomInputState[3 * pixelLinearIndex + 1] = rng.s2;
+		randomInputState[3 * pixelLinearIndex + 2] = rng.s3;
 		
 		imageStore(colorImage, loc, vec4(sumColorSamples, 1.0));
 		imageStore(normalImage, loc, vec4(sumNormalSamples, 1.0));

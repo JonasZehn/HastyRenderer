@@ -422,16 +422,9 @@ public:
     submittedSingleTimeCommandBuffer.emplace_back(commandBuffer);
   }
 
-  // doing an image layout transition while keeping it on the same queue family
-  // see https://github.com/Overv/VulkanTutorial/tree/master/code at the time of writing this the license for the code folder is CC0 1.0 Universal.
-  void transitionImageLayout(VulkanImage& image, VkImageLayout newLayout)
+
+  void setupTransitionBarrier(const VulkanImage& image, VkImageLayout newLayout, VkPipelineStageFlags& sourceStage, VkPipelineStageFlags& destinationStage, VkImageMemoryBarrier& barrier)
   {
-    VkCommandBuffer commandBuffer = beginSingleTimeCommandBuffer();
-
-    VkPipelineStageFlags sourceStage;
-    VkPipelineStageFlags destinationStage;
-
-    VkImageMemoryBarrier barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     barrier.oldLayout = image.layout;
     barrier.newLayout = newLayout;
@@ -489,6 +482,20 @@ public:
       throw std::invalid_argument("unsupported layout transition!");
     }
 
+  }
+
+  // doing an image layout transition while keeping it on the same queue family
+  // see https://github.com/Overv/VulkanTutorial/tree/master/code at the time of writing this the license for the code folder is CC0 1.0 Universal.
+  void transitionImageLayout(VulkanImage& image, VkImageLayout newLayout)
+  {
+    VkCommandBuffer commandBuffer = beginSingleTimeCommandBuffer();
+
+    VkPipelineStageFlags sourceStage;
+    VkPipelineStageFlags destinationStage;
+
+    VkImageMemoryBarrier barrier{};
+    setupTransitionBarrier(image, newLayout, sourceStage, destinationStage, barrier);
+
     vkCmdPipelineBarrier(
       commandBuffer,
       sourceStage, destinationStage,
@@ -497,6 +504,34 @@ public:
       0, nullptr,
       1, &barrier
     );
+
+    VkFence fence = VK_NULL_HANDLE;
+    endSingleTimeCommandBuffer(commandBuffer, fence);
+
+    image.layout = newLayout;
+    image.stage = destinationStage;
+    image.updateDescriptor();
+  }
+  void transitionImageLayoutAndClear(VulkanImage& image, VkImageLayout newLayout, const VkClearColorValue &clearColorValue)
+  {
+    VkCommandBuffer commandBuffer = beginSingleTimeCommandBuffer();
+
+    VkPipelineStageFlags sourceStage;
+    VkPipelineStageFlags destinationStage;
+
+    VkImageMemoryBarrier barrier{};
+    setupTransitionBarrier(image, newLayout, sourceStage, destinationStage, barrier);
+
+    vkCmdPipelineBarrier(
+      commandBuffer,
+      sourceStage, destinationStage,
+      0,
+      0, nullptr,
+      0, nullptr,
+      1, &barrier
+    );
+    
+    vkCmdClearColorImage(commandBuffer, image.image, newLayout, &clearColorValue, 1, &barrier.subresourceRange);
 
     VkFence fence = VK_NULL_HANDLE;
     endSingleTimeCommandBuffer(commandBuffer, fence);

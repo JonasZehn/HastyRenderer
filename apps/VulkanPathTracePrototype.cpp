@@ -69,11 +69,6 @@ public:
       deviceAndQueue->waitDeviceIdle();
       VkDevice logicalDevice = deviceAndQueue->getLogicalDevice();
 
-      if(semaphore)
-      {
-        vkDestroySemaphore(logicalDevice, semaphore, nullptr);
-        semaphore = nullptr;
-      }
       if(pipeline)
       {
         vkDestroyPipeline(logicalDevice, pipeline, nullptr);
@@ -513,13 +508,8 @@ public:
     buildTopLevel();
   }
 
-  void buildComputeCommandBuffer(int32_t nSamples, uint32_t width, uint32_t height)
+  void buildComputeCommandBuffer(VkCommandBuffer commandBuffer, int32_t numSamplesPerRun, uint32_t width, uint32_t height)
   {
-    VkQueue queue = deviceAndQueue->getQueue();
-
-    // Flush the queue if we're rebuilding the command buffer after a pipeline change to ensure it's not currently in use
-    VK_CHECK_RESULT(vkQueueWaitIdle(queue));
-
     VkCommandBufferBeginInfo commandBufferBeginInfo = vks::initializers::commandBufferBeginInfo();
 
     VK_CHECK_RESULT(vkBeginCommandBuffer(commandBuffer, &commandBufferBeginInfo));
@@ -527,7 +517,7 @@ public:
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descriptorSet, 0, 0);
     PushConstantsSample pushConstants;
-    pushConstants.nSamples = nSamples;
+    pushConstants.nSamples = numSamplesPerRun;
     vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(PushConstantsSample), &pushConstants);
 
     uint32_t layoutSizeX = 4;
@@ -539,7 +529,7 @@ public:
     VK_CHECK_RESULT(vkEndCommandBuffer(commandBuffer));
   }
 
-  void preprareCompute(const std::shared_ptr<VulkanComputeDeviceAndQueue>& deviceAndQueue, int nSamples, VulkanImage& colorImage, VulkanImage& normalImage, VulkanImage& albedoImage)
+  void preprareCompute(const std::shared_ptr<VulkanComputeDeviceAndQueue>& deviceAndQueue, int numSamplesPerRun, VulkanImage& colorImage, VulkanImage& normalImage, VulkanImage& albedoImage)
   {
     VkDevice logicalDevice = deviceAndQueue->getLogicalDevice();
 
@@ -662,19 +652,7 @@ public:
     VkPipelineCache pipelineCache = nullptr;
     VK_CHECK_RESULT(vkCreateComputePipelines(logicalDevice, pipelineCache, 1, &computePipelineCreateInfo, nullptr, &pipeline));
 
-    // Create a command buffer for compute operations
-    VkCommandBufferAllocateInfo cmdBufAllocateInfo =
-      vks::initializers::commandBufferAllocateInfo(
-        deviceAndQueue->getCommandPool(),
-        VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        1);
 
-    VK_CHECK_RESULT(vkAllocateCommandBuffers(logicalDevice, &cmdBufAllocateInfo, &commandBuffer));
-
-    VkSemaphoreCreateInfo semaphoreCreateInfo{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
-    VK_CHECK_RESULT(vkCreateSemaphore(logicalDevice, &semaphoreCreateInfo, nullptr, &semaphore));
-
-    buildComputeCommandBuffer(nSamples, colorImage.getWidth(), colorImage.getHeight());
   }
   void run(RenderJob& job, Image3f& colorImage, Image3f& normalImage, Image3f& albedoImage)
   {
@@ -690,7 +668,9 @@ public:
     Image4f outputImage;
     outputImage.setZero(renderWidth, renderHeight);
 
+    int nSamplesPerRun = 50;
     int nSamples = job.renderSettings.numSamples;
+    int nRuns = (nSamples + nSamplesPerRun - 1) / nSamplesPerRun; // ceil integer division
 
     VkDeviceSize bufferSizeBytes = outputImage.byteCount();
 
@@ -699,31 +679,75 @@ public:
     transferDataToGPU(*job.scene, renderWidth, renderHeight);
     buildAccelerationStructure();
 
-    VulkanImage colorImageGPU = allocateDeviceImage(deviceAndQueue, VK_FORMAT_R32G32B32A32_SFLOAT, renderWidth, renderHeight, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
-    deviceAndQueue->transitionImageLayout(colorImageGPU, VK_IMAGE_LAYOUT_GENERAL);
+    VkClearColorValue clearColorValue;
+    for(int i=0; i<4; i++) clearColorValue.float32[i] = 0.0;
 
-    VulkanImage normalImageGPU = allocateDeviceImage(deviceAndQueue, VK_FORMAT_R32G32B32A32_SFLOAT, renderWidth, renderHeight, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
-    deviceAndQueue->transitionImageLayout(normalImageGPU, VK_IMAGE_LAYOUT_GENERAL);
+    VulkanImage colorImageGPU = allocateDeviceImage(deviceAndQueue, VK_FORMAT_R32G32B32A32_SFLOAT, renderWidth, renderHeight, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
+    deviceAndQueue->transitionImageLayoutAndClear(colorImageGPU, VK_IMAGE_LAYOUT_GENERAL, clearColorValue);
 
-    VulkanImage albedoImageGPU = allocateDeviceImage(deviceAndQueue, VK_FORMAT_R32G32B32A32_SFLOAT, renderWidth, renderHeight, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
-    deviceAndQueue->transitionImageLayout(albedoImageGPU, VK_IMAGE_LAYOUT_GENERAL);
+    VulkanImage normalImageGPU = allocateDeviceImage(deviceAndQueue, VK_FORMAT_R32G32B32A32_SFLOAT, renderWidth, renderHeight, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
+    deviceAndQueue->transitionImageLayoutAndClear(normalImageGPU, VK_IMAGE_LAYOUT_GENERAL, clearColorValue);
 
-    preprareCompute(deviceAndQueue, nSamples, colorImageGPU, normalImageGPU, albedoImageGPU);
+    VulkanImage albedoImageGPU = allocateDeviceImage(deviceAndQueue, VK_FORMAT_R32G32B32A32_SFLOAT, renderWidth, renderHeight, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
+    deviceAndQueue->transitionImageLayoutAndClear(albedoImageGPU, VK_IMAGE_LAYOUT_GENERAL, clearColorValue);
 
-    VkPipelineStageFlags waitStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+    preprareCompute(deviceAndQueue, nSamplesPerRun, colorImageGPU, normalImageGPU, albedoImageGPU);
 
-    VkSubmitInfo computeSubmitInfo = vks::initializers::submitInfo();
-    computeSubmitInfo.commandBufferCount = 1;
-    computeSubmitInfo.pCommandBuffers = &commandBuffer;
-    computeSubmitInfo.waitSemaphoreCount = 0;
-    computeSubmitInfo.pWaitSemaphores = VK_NULL_HANDLE;
-    computeSubmitInfo.pWaitDstStageMask = &waitStageMask;
-    computeSubmitInfo.signalSemaphoreCount = 1;
-    computeSubmitInfo.pSignalSemaphores = &semaphore;
-    std::cout << " submitting" << std::endl;
-    VK_CHECK_RESULT(vkQueueSubmit(deviceAndQueue->getQueue(), 1, &computeSubmitInfo, VK_NULL_HANDLE));
+    VkDevice logicalDevice = deviceAndQueue->getLogicalDevice();
 
-    deviceAndQueue->waitQueueIdle();
+    VkSemaphore lastSemaphore{ nullptr };
+
+    std::vector<VkSemaphore> semaphores;
+
+    int sumSamples = 0;
+    for(int i = 0; i < nRuns; i++)
+    {
+      int nSamplesThisRun = i == nRuns -1 ? nSamples - nSamplesPerRun * (nRuns - 1)  : nSamplesPerRun;
+      sumSamples += nSamplesThisRun;
+
+      VkCommandBuffer commandBuffer{ nullptr };
+      // Create a command buffer for compute operations
+      VkCommandBufferAllocateInfo cmdBufAllocateInfo =
+        vks::initializers::commandBufferAllocateInfo(
+          deviceAndQueue->getCommandPool(),
+          VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+          1);
+
+      VK_CHECK_RESULT(vkAllocateCommandBuffers(logicalDevice, &cmdBufAllocateInfo, &commandBuffer));
+
+      VkSemaphore newSemaphore{ nullptr };
+      VkSemaphoreCreateInfo semaphoreCreateInfo{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
+      VK_CHECK_RESULT(vkCreateSemaphore(logicalDevice, &semaphoreCreateInfo, nullptr, &newSemaphore));
+
+      buildComputeCommandBuffer(commandBuffer, nSamplesThisRun, colorImageGPU.getWidth(), colorImageGPU.getHeight());
+
+      VkPipelineStageFlags waitStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+
+      VkSubmitInfo computeSubmitInfo = vks::initializers::submitInfo();
+      computeSubmitInfo.commandBufferCount = 1;
+      computeSubmitInfo.pCommandBuffers = &commandBuffer;
+      if(lastSemaphore == nullptr)
+      {
+        computeSubmitInfo.waitSemaphoreCount = 0;
+        computeSubmitInfo.pWaitSemaphores = VK_NULL_HANDLE;
+      }
+      else
+      {
+        computeSubmitInfo.waitSemaphoreCount = 1;
+        computeSubmitInfo.pWaitSemaphores = &lastSemaphore;
+      }
+      computeSubmitInfo.pWaitDstStageMask = &waitStageMask;
+      computeSubmitInfo.signalSemaphoreCount = 1;
+      computeSubmitInfo.pSignalSemaphores = &newSemaphore;
+
+      std::cout << " submitting " << i << '\n';
+      VK_CHECK_RESULT(vkQueueSubmit(deviceAndQueue->getQueue(), 1, &computeSubmitInfo, VK_NULL_HANDLE));
+
+      lastSemaphore = newSemaphore;
+
+      semaphores.push_back(newSemaphore);
+    }
+    assert(sumSamples == nSamples);
 
     deviceAndQueue->transitionImageLayout(colorImageGPU, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
     deviceAndQueue->transitionImageLayout(normalImageGPU, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
@@ -753,6 +777,11 @@ public:
       outputImageBuffer.read(outputImage.data(), outputImage.byteCount());
       albedoImage = removeAlphaChannel(outputImage);
       albedoImage /= static_cast<float>(nSamples);
+    }
+
+    for(auto& semaphore : semaphores)
+    {
+      vkDestroySemaphore(logicalDevice, semaphore, nullptr);
     }
 
     destroy();
@@ -794,8 +823,6 @@ private:
   VulkanShaderModule shader;
   VkPipeline pipeline{ nullptr };
   VkPipelineLayout pipelineLayout{ nullptr };
-  VkSemaphore semaphore{ nullptr };
-  VkCommandBuffer commandBuffer{ nullptr };
   VkDescriptorPool descriptorPool{ nullptr };
   VkDescriptorSetLayout descriptorSetLayout{ nullptr };
   VkDescriptorSet descriptorSet{ nullptr };
