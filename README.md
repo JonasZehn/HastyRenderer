@@ -133,3 +133,5 @@ RNG:
 | ![cuboids](images/cuboids.jpg) | ![](images/cuboids_500_samples_gpu_denoised.jpg) | ![](images/cuboids_500_samples_gpu.png) |
 | ![cuboids](images/interpolated_normals.jpg) | ![](images/metal_ring_500_samples_gpu_denoised.jpg) | ![](images/metal_ring_500_samples_gpu.png) |
 | ![cuboids](images/glass.jpg) | ![](images/glass_500_samples_gpu_denoised.jpg) |  ![](images/glass_500_samples_gpu.png) |
+| ![cuboids](images/interpolated_normals.jpg) | ![](images/metal_ring_500_samples_gpu_denoised.jpg) | ![](images/metal_ring_500_samples_gpu.png) |
+| ![cuboids](images/rgb_dispersion.jpg) | ![](images/prism_500_samples_gpu_denoised.jpg) |  ![](images/prism_500_samples_gpu.png) |
