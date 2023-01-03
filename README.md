@@ -67,6 +67,8 @@ Currently the input format is quite simple, i.e. it the renderer takes two JSON 
 	* [x] Vulkan - Initial Compute Shaders
 	* [x] Vulkan - Build Acceleration Structures & Basic Ray Queries
 	* [x] Create Image Comparison in Documentation
+	* [ ] Benchmark & Analyze
+	* [ ] Split into more Fine-grained Passes and Compare Performance
 	* [ ] Refactor Path Tracer to Share Features More Easily
 
 ## References
