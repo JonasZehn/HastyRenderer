@@ -9,7 +9,7 @@ namespace Hasty
 
 void from_json(const nlohmann::json& j, RenderSettings& settings)
 {
-  json_get_optional(settings.roulleteStartDepth, j, "roulette_start_depth", 1);
+  json_get_optional(settings.rouletteStartDepth, j, "roulette_start_depth", 1);
   json_get_optional(settings.rouletteQ, j, "roulette_q", 0.3f);
   json_get_optional(settings.width, j, "width", uint32_t(720));
   json_get_optional(settings.height, j, "height", uint32_t(720));

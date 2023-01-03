@@ -21,6 +21,29 @@ struct TriangleData {
 	int normalIndices[3];
 };
 
+struct CameraUniformBufferObject {
+	vec3 position;
+	float fovSlope;
+	vec3 forward;
+	vec3 right;
+	vec3 up;
+	float apertureSize;
+	float focalDistance;
+	int numBlades;
+	float bladeRotation;
+};
+
+struct RenderSettingsUniformBufferObject
+{
+	int rouletteStartDepth;
+	float rouletteQ;
+	int maxDepth;
+	int numSamples;
+	uint useMIS;
+	float exposure;
+};
+
+
 layout(local_size_x = 4, local_size_y = 4, local_size_z = 1) in;
 
 layout(binding = 0, set = 0) uniform accelerationStructureEXT tlas;
@@ -55,17 +78,11 @@ layout(binding = 9, set = 0, scalar) buffer RandomInputState
 	uint randomInputState[];
 };
 
-layout(binding = 10, scalar) uniform Camera {
-	vec3 position;
-	float fovSlope;
-	vec3 forward;
-	vec3 right;
-	vec3 up;
-	float apertureSize;
-	float focalDistance;
-	int numBlades;
-	float bladeRotation;
-} camera;
+layout(binding = 10, scalar) uniform RenderContext {
+	vec3 backgroundColor;
+	CameraUniformBufferObject camera;
+	RenderSettingsUniformBufferObject renderSettings;
+};
 
 layout(binding = 11, set = 0, rgba32f) uniform image2D colorImage;
 layout(binding = 12, set = 0, rgba32f) uniform image2D normalImage;
@@ -74,7 +91,6 @@ layout(binding = 13, set = 0, rgba32f) uniform image2D albedoImage;
 layout( push_constant, scalar ) uniform PushConstants // guarantueed to be at least 128 bytes
 {
 	int nSamples;
-	vec3 backgroundColor;
 };
 
 //////// VMath.h
@@ -165,6 +181,7 @@ struct SurfaceInteraction {
 	vec3 tangent;
 	vec3 bitangent;
 	vec3 normalShadingDefault;
+	float h;
 };
 
 
@@ -196,9 +213,19 @@ float getOutsideIOR(LightRay lightRay, bool fromOutside, int mediumId)
 			}
 		}
 	} else {
+		int count = 0;
+		
 		for(int i=0; i<lightRay.mediumInfo.length(); i++){
-			if(lightRay.mediumInfo[i].mediumId != mediumId && lightRay.mediumInfo[i].mediumId != -1){
-				return lightRay.mediumInfo[i].IOR;
+			if(lightRay.mediumInfo[i].mediumId != -1){
+				count += 1;
+			}
+		}
+		
+		if(count > 1){
+			for(int i=0; i<lightRay.mediumInfo.length(); i++){
+				if(lightRay.mediumInfo[i].mediumId != mediumId && lightRay.mediumInfo[i].mediumId != -1){
+					return lightRay.mediumInfo[i].IOR;
+				}
 			}
 		}
 	}
@@ -208,6 +235,13 @@ void updateMedium(inout LightRay lightRay, bool beforeOutside, bool afterOutside
 {
 	if(beforeOutside && !afterOutside){
 		//entering medium
+		// make sure it's not already added in numerical issues regions:
+		for(int i=0; i<lightRay.mediumInfo.length(); i++){
+			if(lightRay.mediumInfo[i].mediumId == mediumId){
+				return;
+			}
+		}
+		
 		for(int i=0; i<lightRay.mediumInfo.length(); i++){
 			if(lightRay.mediumInfo[i].mediumId == -1){
 				lightRay.mediumInfo[i].mediumId = mediumId;
@@ -222,7 +256,6 @@ void updateMedium(inout LightRay lightRay, bool beforeOutside, bool afterOutside
 		for(int i=0; i<lightRay.mediumInfo.length(); i++){
 			if(lightRay.mediumInfo[i].mediumId == mediumId){
 				lightRay.mediumInfo[i].mediumId = -1;
-				break;
 			}
 		}
 	}
@@ -354,6 +387,7 @@ struct SampleResult
 	vec3 throughputConcentrated;
 	float pdfOmega;
 	vec3 debug;
+	float debugCount;
 };
 
 MaterialEvalResult MaterialEvalResultConstruct(vec3 d, vec3 s, vec3 n)
@@ -854,6 +888,8 @@ SampleResult PrincipledBRDFsample(
 	int wavelength, float indexOfRefractionOutside, float indexOfRefractionMat)
 {
 	SampleResult result;
+	result.debug = vec3(0.0);
+	result.debugCount = 0;
 
 	//assert(evalFlag != ShaderEvalFlagNONE); // no distribution to sample
 	//assert(dot(normalShading, wo) >= 0.0f);
@@ -913,7 +949,10 @@ SampleResult PrincipledBRDFsample(
 #define PBRDF_STRATEGY_REFRACTIVE 3u
 
 	float xi = uniform01f(rng); // xi \in [0, 1)
-	uint strategy = xi < probabilityResult.pRefractiveStrategy ? PBRDF_STRATEGY_REFRACTIVE : (xi < (probabilityResult.pRefractiveStrategy + probabilityResult.pSpecularStrategy) ? PBRDF_STRATEGY_SPECULAR : PBRDF_STRATEGY_DIFFUSE);
+	uint strategy = (xi < probabilityResult.pRefractiveStrategy) ? PBRDF_STRATEGY_REFRACTIVE : ((xi < (probabilityResult.pRefractiveStrategy + probabilityResult.pSpecularStrategy)) ? PBRDF_STRATEGY_SPECULAR : PBRDF_STRATEGY_DIFFUSE);
+	
+	result.debug = vec3(float(strategy));
+	result.debugCount = 1;
 	if(strategy == PBRDF_STRATEGY_SPECULAR)
 	{
 
@@ -1088,19 +1127,21 @@ SurfaceInteraction getSurfaceInteraction(rayQueryEXT rayQuery){
 	uint vtxIdx1 = triangle.vertexIndices[1];
 	uint vtxIdx2 = triangle.vertexIndices[2];
 
-	vec3 v0 = vertices[vtxIdx0];
-	vec3 v1 = vertices[vtxIdx1];
-	vec3 v2 = vertices[vtxIdx2];
+	vec3 xv[3] = {
+		vertices[vtxIdx0],
+		vertices[vtxIdx1],
+		vertices[vtxIdx2]
+	};
 	
 	vec2 uv0 = triangle.textureCoordinates[0];
 	vec2 uv1 = triangle.textureCoordinates[1];
 	vec2 uv2 = triangle.textureCoordinates[2];
 	
-	interaction.x = barycentricCoordinates[0] * v0 + barycentricCoordinates[1] * v1 + barycentricCoordinates[2] * v2;
+	interaction.x = barycentricCoordinates[0] * xv[0] + barycentricCoordinates[1] * xv[1] + barycentricCoordinates[2] * xv[2];
 	interaction.uv = barycentricCoordinates[0] * uv0 + barycentricCoordinates[1] * uv1 + barycentricCoordinates[2] * uv2;
 	interaction.uvInverted = vec2(interaction.uv.x, 1.0 - interaction.uv.y);
 	
-	vec3 m = cross(v1 - v0, v2 - v0);
+	vec3 m = cross(xv[1] - xv[0], xv[2] - xv[0]);
 	interaction.normalGeometric = normalize(m);
 	
 	interaction.tangent = anyOrthonormal(interaction.normalGeometric);
@@ -1109,13 +1150,24 @@ SurfaceInteraction getSurfaceInteraction(rayQueryEXT rayQuery){
 	
 	bool smoothNormals = triangle.normalIndices[0] != -1;
 	if(smoothNormals){
-		vec3 nv0 = normals[triangle.normalIndices[0]];
-		vec3 nv1 = normals[triangle.normalIndices[1]];
-		vec3 nv2 = normals[triangle.normalIndices[2]];
-		interaction.normalShadingDefault = barycentricCoordinates[0] * nv0 + barycentricCoordinates[1] * nv1 + barycentricCoordinates[2] * nv2;
+		vec3 nv[3] = {
+			normals[triangle.normalIndices[0]],
+			normals[triangle.normalIndices[1]],
+			normals[triangle.normalIndices[2]]
+		};
+		interaction.normalShadingDefault = barycentricCoordinates[0] * nv[0] + barycentricCoordinates[1] * nv[1] + barycentricCoordinates[2] * nv[2];
 		interaction.normalShadingDefault = normalize(interaction.normalShadingDefault);
+		
+		interaction.h = 0.0f;
+		for(int i = 0; i < 3; i++)
+		{
+		  float nvng = dot(interaction.normalGeometric, nv[i]);
+		  float hi = nvng == 0.0f ? 1e6 : (dot(xv[i], nv[i]) - dot(interaction.x, nv[i])) / nvng;
+		  interaction.h += barycentricCoordinates[i] * barycentricCoordinates[i] * hi;
+		}
 	} else {
 		interaction.normalShadingDefault = interaction.normalGeometric;
+		interaction.h = 0.0f;
 	}
 
 	
@@ -1126,6 +1178,14 @@ vec3 getEmissionRadiance(vec3 wo, vec3 normal, Material material){
 	return dot(wo, normal) >= 0.0 ? material.emission * InvPi : vec3(0.0);
 }
 
+void constructRayOffset(SurfaceInteraction interaction, bool outside, out vec3 rayOrigin)
+{
+  vec3 normal = interaction.normalGeometric;
+
+  float eps = 1e-5f;
+  float hmin = max(eps, norm(interaction.x) * eps);
+  rayOrigin = interaction.x + normal * (1.01f * (outside ? max(0.0f, interaction.h) + hmin : min(0.0f, interaction.h) - hmin));
+}
 
 
 void main()
@@ -1144,6 +1204,7 @@ void main()
 		vec3 sumColorSamples = imageLoad(colorImage, loc).xyz;
 		vec3 sumNormalSamples = imageLoad(normalImage, loc).xyz;
 		vec3 sumAlbedoSamples = imageLoad(albedoImage, loc).xyz;
+		float debugCount = 0.0f;
 		
 		RNG rng = RNGConstruct(seed0, seed1, seed2);
 		
@@ -1157,7 +1218,7 @@ void main()
 			cameraRay(rng, pixelPosition, size, rayOrigin, rayDirection);
 			LightRay lightRay = LightRayConstruct();
 			
-			for(int depth = 0; depth < 10; depth++){
+			for(int depth = 0; depth < renderSettings.maxDepth; depth++){
 				
 				rayQueryEXT rayQuery;
 				rayQueryInitializeEXT(
@@ -1166,7 +1227,7 @@ void main()
 					gl_RayFlagsOpaqueEXT,
 					0xFF,
 					rayOrigin,
-					1e-5,
+					1e-6f,
 					rayDirection,
 					10000.0);
 				while(rayQueryProceedEXT(rayQuery))
@@ -1175,6 +1236,12 @@ void main()
 				
 				if(rayQueryGetIntersectionTypeEXT(rayQuery, true) == gl_RayQueryCommittedIntersectionTriangleEXT)
 				{
+					float rouletteP = depth > renderSettings.rouletteStartDepth ? renderSettings.rouletteQ : 0.0;
+					if(uniform01f(rng) < rouletteP){
+						break;
+					}
+					throughput /= (1.0 - rouletteP);
+					
 					SurfaceInteraction interaction = getSurfaceInteraction(rayQuery);
 					
 					vec3 wo = -rayDirection;
@@ -1215,11 +1282,17 @@ void main()
 						metallicHit, specularHit, roughnessHit, anisotropyHit, transmissionHit,
 						wavelength, indexOfRefractionOutside, indexOfRefractionMat);
 					
+					//if(depth == 1){
+					//	colorSample = sampleResult.debug;
+					//	debugCount += sampleResult.debugCount;
+					//	break;
+					//}
+					
 					vec3 throughputHit = sampleResult.throughputDiffuse + sampleResult.throughputConcentrated;
 					
 					throughput *= throughputHit;
 					
-					rayOrigin = interaction.x + (sampleResult.outside ? 1e-4 : -1e-4) * interaction.normalGeometric;
+					constructRayOffset(interaction, sampleResult.outside, rayOrigin);
 					rayDirection = sampleResult.direction;
 					
 					bool afterOutside = sampleResult.outside; // wrt geometric normal
@@ -1231,15 +1304,11 @@ void main()
 					break;
 				}
 				
-				float rouletteP = depth > 2 ? 0.30 : 0.0;
-				if(uniform01f(rng) < rouletteP){
-					break;
-				}
-				throughput /= (1.0 - rouletteP);
 			}
 			
 			
 			sumColorSamples += colorSample;
+			//if(debugCount > 0.0) sumColorSamples += colorSample * nSamples / debugCount;
 		}
 		
 		randomInputState[3 * pixelLinearIndex + 0] = rng.s1;

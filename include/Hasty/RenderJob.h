@@ -18,7 +18,7 @@ public:
 
   RenderSettings() {}
 
-  int roulleteStartDepth = 1;
+  int rouletteStartDepth = 1;
   float rouletteQ = 0.3f;
   uint32_t width = 720;
   uint32_t height = 720;

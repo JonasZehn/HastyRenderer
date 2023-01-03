@@ -28,6 +28,61 @@ struct CameraUniformBufferObject
   alignas(4) int32_t numBlades;
   alignas(4) float bladeRotation;
 };
+
+CameraUniformBufferObject cameraUniformBufferObjectConstruct(const Camera& camera)
+{
+  CameraUniformBufferObject object;
+
+  object.position = camera.getPosition();
+  object.fovSlope = camera.getFoVSlope();
+  object.forward = camera.getForward();
+  object.up = camera.getUp();
+  object.right = camera.getRight();
+  object.apertureSize = camera.getApertureSize();
+  object.focalDistance = camera.getFocalDistance();
+  object.numBlades = camera.getNumBlades();
+  object.bladeRotation = camera.getBladeRotation();
+
+  return object;
+}
+
+struct RenderSettingsUniformBufferObject
+{
+  alignas(4) int32_t rouletteStartDepth;
+  alignas(4) float rouletteQ;
+  alignas(4) int32_t maxDepth;
+  alignas(4) int32_t numSamples;
+  alignas(4) uint32_t useMIS;
+  alignas(4) float exposure;
+};
+
+RenderSettingsUniformBufferObject renderSettingsUniformBufferObjectConstruct(const RenderSettings& renderSettings)
+{
+  RenderSettingsUniformBufferObject object;
+  object.rouletteStartDepth = renderSettings.rouletteStartDepth;
+  object.rouletteQ = renderSettings.rouletteQ;
+  object.maxDepth = renderSettings.maxDepth;
+  object.numSamples = renderSettings.numSamples;
+  object.useMIS = renderSettings.useMIS;
+  object.exposure = renderSettings.exposure;
+  return object;
+}
+struct RenderContextUniformBufferObject
+{
+  alignas(4) Vec3f backgroundColor;
+  alignas(4) CameraUniformBufferObject camera;
+  alignas(4) RenderSettingsUniformBufferObject renderSettings;
+};
+
+RenderContextUniformBufferObject renderContextUniformBufferObjectConstruct(const Vec3f& backgroundColor, const Camera& camera, const RenderSettings& renderSettings)
+{
+  RenderContextUniformBufferObject object;
+  object.backgroundColor = backgroundColor;
+  object.camera = cameraUniformBufferObjectConstruct(camera);
+  object.renderSettings = renderSettingsUniformBufferObjectConstruct(renderSettings);
+  return object;
+}
+
 struct MaterialUniformBufferObject
 {
   alignas(4) Vec3f emission;
@@ -39,7 +94,6 @@ struct MaterialUniformBufferObject
 struct PushConstantsSample
 {
   alignas(4) int32_t nSamples;
-  alignas(4) Vec3f backgroundColor;
 };
 struct TriangleData
 {
@@ -199,7 +253,7 @@ public:
     return nullptr;
   }
 
-  void transferDataToGPU(Scene& scene, uint32_t renderWidth, uint32_t renderHeight, Vec3f& backgroundColor)
+  void transferDataToGPU(Scene& scene, const RenderSettings &renderSettings, uint32_t renderWidth, uint32_t renderHeight)
   {
     std::vector<float> vertices = scene.getVertices();
     std::vector<std::size_t> geometryIDs = scene.getGeometryIDs();
@@ -217,7 +271,7 @@ public:
     std::vector<MaterialUniformBufferObject> materials;
     materials.reserve(scene.getMaterialCount());
 
-    backgroundColor = Vec3f::Zero();
+    Vec3f backgroundColor = Vec3f::Zero();
 
     BackgroundColor const* backgroundColorObject = dynamic_cast<BackgroundColor const*>(&scene.getBackground());
     if(backgroundColorObject != nullptr)
@@ -355,19 +409,10 @@ public:
     randomInputStateBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, randomInputStateByteCount, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
     randomInputStateBuffer->write((void*)randomInputState.data(), randomInputStateByteCount);
 
-    CameraUniformBufferObject cameraData;
-    cameraData.position = scene.camera.getPosition();
-    cameraData.fovSlope = scene.camera.getFoVSlope();
-    cameraData.forward = scene.camera.getForward();
-    cameraData.up = scene.camera.getUp();
-    cameraData.right = scene.camera.getRight();
-    cameraData.apertureSize = scene.camera.getApertureSize();
-    cameraData.focalDistance = scene.camera.getFocalDistance();
-    cameraData.numBlades = scene.camera.getNumBlades();
-    cameraData.bladeRotation = scene.camera.getBladeRotation();
+    RenderContextUniformBufferObject renderContextUniformBufferObject = renderContextUniformBufferObjectConstruct(backgroundColor, scene.camera, renderSettings);
 
-    cameraUniformBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, sizeof(cameraData), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
-    cameraUniformBuffer->write((void*)&cameraData, sizeof(cameraData));
+    renderContextUniformBuffer = std::make_unique<VulkanBuffer>(deviceAndQueue, sizeof(renderContextUniformBufferObject), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+    renderContextUniformBuffer->write((void*)&renderContextUniformBufferObject, sizeof(renderContextUniformBufferObject));
 
     deviceAndQueue->waitQueueIdle();
   }
@@ -525,7 +570,7 @@ public:
     buildTopLevel();
   }
 
-  void buildComputeCommandBuffer(VkCommandBuffer commandBuffer, int32_t numSamplesPerRun, const Vec3f& backgroundColor, uint32_t width, uint32_t height)
+  void buildComputeCommandBuffer(VkCommandBuffer commandBuffer, int32_t numSamplesPerRun, uint32_t width, uint32_t height)
   {
     VkCommandBufferBeginInfo commandBufferBeginInfo = vks::initializers::commandBufferBeginInfo();
 
@@ -535,7 +580,6 @@ public:
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descriptorSet, 0, 0);
     PushConstantsSample pushConstants;
     pushConstants.nSamples = numSamplesPerRun;
-    pushConstants.backgroundColor = backgroundColor;
     vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(PushConstantsSample), &pushConstants);
 
     uint32_t layoutSizeX = 4;
@@ -561,7 +605,7 @@ public:
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, metallicImages.size()), // metallicTextures
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, roughnessImages.size()), // roughnessTextures
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1), // RandomInputState
-      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1), // Camera Input
+      vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1), // RenderContext
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1), // colorImage
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1), // normalImage
       vks::initializers::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1), // albedoImage
@@ -579,7 +623,7 @@ public:
       vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_COMPUTE_BIT, 7, metallicImages.size()), // metallicTextures
       vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_COMPUTE_BIT, 8, roughnessImages.size()), // roughnessTextures
       vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 9), // RandomInputState
-      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 10), // Camera Input
+      vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 10), // RenderContext
       vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 11), // colorImage
       vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 12), // normalImage
       vks::initializers::descriptorSetLayoutBinding(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, VK_SHADER_STAGE_COMPUTE_BIT, 13), // albedoImage
@@ -620,7 +664,7 @@ public:
     }
 
     VkDescriptorBufferInfo randomInputStateDescriptorBufferInfo = randomInputStateBuffer->descriptorBufferInfo();
-    VkDescriptorBufferInfo cameraDescriptorBufferInfo = cameraUniformBuffer->descriptorBufferInfo();
+    VkDescriptorBufferInfo renderContextDescriptorBufferInfo = renderContextUniformBuffer->descriptorBufferInfo();
 
     std::vector<VkWriteDescriptorSet> computeWriteDescriptorSets = {
       writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 0, &writeDescriptorSetAccelerationStructureKHR), // tlas
@@ -632,7 +676,7 @@ public:
       vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 7, metallicImagesDescriptorBufferInfos.data(), metallicImages.size()), // metallicTextures
       vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 8, roughnessImagesDescriptorBufferInfos.data(), roughnessImages.size()), // roughnessTextures
       vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 9, &randomInputStateDescriptorBufferInfo), // RandomInputState
-      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10, &cameraDescriptorBufferInfo), // Camera Input
+      vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 10, &renderContextDescriptorBufferInfo), // RenderContext
       vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 11, &colorImage.getDescriptor()), // colorImage
       vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 12, &normalImage.getDescriptor()), // normalImage
       vks::initializers::writeDescriptorSet(descriptorSet, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 13, &albedoImage.getDescriptor()), // albedoImage
@@ -690,8 +734,7 @@ public:
 
     VulkanBuffer outputImageBuffer(deviceAndQueue, bufferSizeBytes, VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
-    Vec3f backgroundColor;
-    transferDataToGPU(*job.scene, renderWidth, renderHeight, backgroundColor);
+    transferDataToGPU(*job.scene, job.renderSettings, renderWidth, renderHeight);
     buildAccelerationStructure();
 
     VkClearColorValue clearColorValue;
@@ -734,7 +777,7 @@ public:
       VkSemaphoreCreateInfo semaphoreCreateInfo{ VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO };
       VK_CHECK_RESULT(vkCreateSemaphore(logicalDevice, &semaphoreCreateInfo, nullptr, &newSemaphore));
 
-      buildComputeCommandBuffer(commandBuffer, nSamplesThisRun, backgroundColor, colorImageGPU.getWidth(), colorImageGPU.getHeight());
+      buildComputeCommandBuffer(commandBuffer, nSamplesThisRun, colorImageGPU.getWidth(), colorImageGPU.getHeight());
 
       VkPipelineStageFlags waitStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
 
@@ -821,7 +864,7 @@ private:
   std::vector<std::unique_ptr<VulkanBuffer> > roughnessImageBuffers;
   std::vector<std::unique_ptr<VulkanImage> > roughnessImages;
 
-  std::unique_ptr<VulkanBuffer> cameraUniformBuffer;
+  std::unique_ptr<VulkanBuffer> renderContextUniformBuffer;
 
   PFN_vkGetAccelerationStructureBuildSizesKHR pfn_vkGetAccelerationStructureBuildSizesKHR{ nullptr };
   PFN_vkCreateAccelerationStructureKHR pfn_vkCreateAccelerationStructureKHR{ nullptr };

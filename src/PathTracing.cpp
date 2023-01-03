@@ -47,7 +47,7 @@ Vec3f estimateRadiance(RenderContext context, LightRayInfo& lightRay, const Ray&
 
     // https://www.pbr-book.org/3ed-2018/Monte_Carlo_Integration/Russian_Roulette_and_Splitting#
     float rouletteQ = 0.0f;
-    if(depth >= context.renderSettings.roulleteStartDepth) rouletteQ = context.renderSettings.rouletteQ;
+    if(depth >= context.renderSettings.rouletteStartDepth) rouletteQ = context.renderSettings.rouletteQ;
 
     if(uniform01f(context.rng) < rouletteQ)
     {
