@@ -128,10 +128,9 @@ RNG:
 ## Visualizing Progress of GPU Implementation
 | Target | GPU - Denoised | GPU - 500 Samples - No MIS |
 | ----------- | ----------- | ----------- |
-| ![](images/denoised.jpg) | ![](images/cornell_box_gpu_500_samples_gpu_denoised.jpg) | ![](images/cornell_box_gpu_500_samples_gpu.png) |
-| ![](images/physically_based_materials.jpg) | ![](images/physically_based_materials_500_samples_gpu_denoised.jpg) |  ![](images/physically_based_materials_500_samples_gpu.png) |
-| ![cuboids](images/cuboids.jpg) | ![](images/cuboids_500_samples_gpu_denoised.jpg) | ![](images/cuboids_500_samples_gpu.png) |
-| ![cuboids](images/interpolated_normals.jpg) | ![](images/metal_ring_500_samples_gpu_denoised.jpg) | ![](images/metal_ring_500_samples_gpu.png) |
+| ![](images/cornell_box_5000_samples_cpu_denoised.jpg) | ![](images/cornell_box_500_samples_gpu_denoised.jpg) | ![](images/cornell_box_500_samples_gpu.png) |
+| ![](images/physically_based_materials_5000_samples_cpu_denoised.jpg) | ![](images/physically_based_materials_500_samples_gpu_denoised.jpg) |  ![](images/physically_based_materials_500_samples_gpu.png) |
+| ![cuboids](images/cuboids_5000_samples_cpu_denoised.jpg) | ![](images/cuboids_500_samples_gpu_denoised.jpg) | ![](images/cuboids_500_samples_gpu.png) |
+| ![cuboids](images/metal_ring_5000_samples_cpu_denoised.jpg) | ![](images/metal_ring_500_samples_gpu_denoised.jpg) | ![](images/metal_ring_500_samples_gpu.png) |
 | ![cuboids](images/glass.jpg) | ![](images/glass_500_samples_gpu_denoised.jpg) |  ![](images/glass_500_samples_gpu.png) |
-| ![cuboids](images/interpolated_normals.jpg) | ![](images/metal_ring_500_samples_gpu_denoised.jpg) | ![](images/metal_ring_500_samples_gpu.png) |
 | ![cuboids](images/rgb_dispersion.jpg) | ![](images/prism_500_samples_gpu_denoised.jpg) |  ![](images/prism_500_samples_gpu.png) |
