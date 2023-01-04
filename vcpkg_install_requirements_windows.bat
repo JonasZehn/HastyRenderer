@@ -10,3 +10,5 @@ set flags=--triplet %vcpkgtriplet%
 %vcpkgdir%/vcpkg install gtest %flags%
 %vcpkgdir%/vcpkg install tbb %flags%
 %vcpkgdir%/vcpkg install openimageio %flags%
+
+if %buildgpu% EQU 1 %vcpkgdir%/vcpkg install vulkan %flags%

@@ -11,3 +11,6 @@ $vcpkgdir/vcpkg install gtest $flags
 $vcpkgdir/vcpkg install tbb $flags
 $vcpkgdir/vcpkg install openimageio $flags
 
+if [ "$buildgpu" -eq "1" ]; then
+  $vcpkgdir/vcpkg install vulkan $flags
+fi

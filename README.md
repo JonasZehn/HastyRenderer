@@ -38,12 +38,16 @@ I'm currently also working on a unidirectional path tracer running on the GPU us
 ### Requirements
 * [CMake](https://cmake.org/) 3.22
 * [vcpkg](https://vcpkg.io/en/getting-started.html)
-* C++17 Compiler
+* C++17 Compiler: E.g. GCC, Visual Studio 2022
+* Vulkan SDK, GPU that supports Vulkan Raytracing Extensions (optional)
 
 ### Build with CMake
-First, edit the `cmake_vars.bat` file to setup the environment.
-Install the dependencies using [vcpkg](https://vcpkg.io/) by running the `vcpkg_install_requirements_windows.bat` file.
-Then run the `cmake_build.bat` file to configure and build the project.
+1. Install requirements (see above)
+2. Edit on Windows:`cmake_vars.bat`/ Linux: `cmake_vars.sh` with a text editor to setup the following variables:
+	- Change `vcpkgdir` to point to your vcpkg installation
+	- Set `buildgpu` to 1 to build the GPU path tracer which requires the installation of the Vulkan SDK.
+3. Run on Windows: `vcpkg_install_requirements_windows.bat` / Linux: `vcpkg_install_requirements_windows.sh` to install the dependencies using vcpkg.
+4. Run on Windows: `cmake_build.bat` / Linux: `cmake_build.sh` to build the project
 
 ### Input format
 

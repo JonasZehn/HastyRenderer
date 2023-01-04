@@ -7,7 +7,12 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
 
 set (CMAKE_CXX_STANDARD 17)
 
-find_package(Vulkan REQUIRED)
+
+option(BUILD_GPU "build gpu path tracer using Vulkan" OFF)
+
+if(BUILD_GPU)
+    find_package(Vulkan REQUIRED)
+endif()
 
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(tinyobjloader CONFIG REQUIRED)
@@ -23,16 +28,15 @@ include(AddShishua)
 include(DownloadOpenImageDenoise)
 find_package(OpenImageDenoise CONFIG REQUIRED)
 
- 
-file(GLOB_RECURSE source_files include/*.h src/*.cpp)
+
+file(GLOB_RECURSE source_files core/include/*.h core/src/*.cpp)
 
 add_library(libHastyRenderer STATIC ${source_files})
-target_include_directories(libHastyRenderer PUBLIC include)
+target_include_directories(libHastyRenderer PUBLIC core/include)
 target_link_libraries(
     libHastyRenderer
     PUBLIC
         nlohmann_json::nlohmann_json
-        Vulkan::Vulkan
     )
 target_link_libraries(
     libHastyRenderer
@@ -77,13 +81,15 @@ target_link_libraries(
         benchmark::benchmark_main)
 target_compile_definitions(HastyBenchmarks PUBLIC BENCHMARK_STATIC_DEFINE=1)
 
-add_executable(VulkanPathTracePrototype "apps/VulkanPathTracePrototype.cpp")
-target_link_libraries(
-    VulkanPathTracePrototype
-    PUBLIC
-        tinyobjloader::tinyobjloader
-        libHastyRendererViewer
-    )
-target_include_directories(VulkanPathTracePrototype PRIVATE ${CMAKE_CURRENT_LIST_DIR}/apps)
-target_compile_definitions(VulkanPathTracePrototype PRIVATE "HASTY_SHADER_PATH=std::filesystem::path(\"${CMAKE_CURRENT_LIST_DIR}/shaders\")")
-
+if(BUILD_GPU)
+    add_executable(VulkanPathTracePrototype "apps/VulkanPathTracePrototype.cpp" "vulkan/src/Vulkan.cpp" "vulkan/include/Hasty/Vulkan.h" "vulkan/include/VulkanInitializers.hpp")
+    target_link_libraries(
+        VulkanPathTracePrototype
+        PUBLIC
+            tinyobjloader::tinyobjloader
+            libHastyRendererViewer
+            Vulkan::Vulkan
+        )
+    target_include_directories(VulkanPathTracePrototype PRIVATE ${CMAKE_CURRENT_LIST_DIR}/apps ${CMAKE_CURRENT_LIST_DIR}/vulkan/include)
+    target_compile_definitions(VulkanPathTracePrototype PRIVATE "HASTY_SHADER_PATH=std::filesystem::path(\"${CMAKE_CURRENT_LIST_DIR}/shaders\")")
+endif()
