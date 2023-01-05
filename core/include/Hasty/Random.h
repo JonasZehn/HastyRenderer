@@ -4,8 +4,9 @@
 
 #include <random>
 #include <memory>
+#include <array>
 
-#define use_shishua
+struct prng_state;
 
 namespace Hasty
 {
@@ -61,75 +62,57 @@ public:
   }
 };
 
+template<typename T>
+T* getAutoAligned(void* ptr)
+{
+  constexpr std::size_t alignment = alignof(T);
+  std::size_t stateSize = sizeof(T) + alignment - 1;
+  T* result = reinterpret_cast<T*>(std::align(alignment, sizeof(prng_state), ptr, stateSize));
+  assert(result != nullptr);
+  return result;
 }
 
-#ifndef use_shishua
+using UniqueAlignmentBuffer = std::unique_ptr<uint8_t[]>;
 
-namespace Hasty
+template<typename T>
+UniqueAlignmentBuffer makeUniqueAlignmentBuffer()
 {
-
-// we implement https://en.cppreference.com/w/cpp/named_req/UniformRandomBitGenerator
-// so it can be passed to discrete distribution
-class RNG
-{
-public:
-
-  std::default_random_engine rengine;
-  std::uniform_real_distribution<float> dist;
-  typedef std::default_random_engine::result_type result_type;
-
-  RNG(uint64_t seed)
-    : dist(0.0f, 1.0f)
-  {
-    rengine.seed(seed);
-  }
-
-  float uniform01()
-  {
-    return dist(rengine);
-  }
-
-  float uniformm11()
-  {
-    return 2.0f * uniform01() - 1.0f;
-  }
-
-  result_type min() const
-  {
-    return rengine.min();
-  }
-  result_type max() const
-  {
-    return rengine.max();
-  }
-
-  result_type operator()()
-  {
-    return rengine();
-  }
-};
-
+  constexpr std::size_t alignment = alignof(T);
+  std::size_t stateSize = sizeof(T) + alignment - 1;
+  return std::unique_ptr<uint8_t[]>(new uint8_t[stateSize]);
 }
-
-#else
-
-struct prng_state;
-
-namespace Hasty
-{
 
 class CopyablePrng_state  // want to make this copyable so we can more easily restore and debug state while decoupling dependency on prng
 {
 public:
-  CopyablePrng_state();
+  CopyablePrng_state(uint64_t seed);
   CopyablePrng_state(const CopyablePrng_state& s2);
+  CopyablePrng_state(CopyablePrng_state&& s2) = delete;
   ~CopyablePrng_state();
   CopyablePrng_state& operator=(const CopyablePrng_state& s2);
+  CopyablePrng_state& operator=(CopyablePrng_state&& s2) = delete;
 
+  inline uint32_t CopyablePrng_state::next4Bytes()
+  {
+    if(offset >= bufferSize)
+    {
+      generateMoreData(); // this way the hot path can be inlined, without including shishua in this header file and poluting the namespace
+    }
+    uint32_t result = buf[offset];
+    offset += 1;
+    return result;
+  }
 
-  prng_state* get() { return m_data.get(); }
 private:
-  std::unique_ptr<prng_state> m_data;
+  prng_state* getState();
+  prng_state const* getState() const;
+  void generateMoreData();
+
+  UniqueAlignmentBuffer unalignedPrngState;
+
+  static const size_t bufferSize = 128;
+  std::array<uint32_t, bufferSize> buf = { 0 };
+  uint32_t offset;
 };
 
 class RNG
@@ -138,63 +121,49 @@ public:
 
   typedef uint32_t result_type;
 
-  static const size_t bufferSize = 128;
-
-  RNG(uint64_t seed);
-  ~RNG();
-
-  uint32_t get4bytes();
+  inline RNG(uint64_t seed)
+    :state(seed)
+  {
+  }
+  inline ~RNG() {}
 
   /** returns a value in the range [0, 1) */
-  float uniform01f()
+  inline float uniform01f()
   {
-    uint32_t u32 = get4bytes();
+    uint32_t u32 = state.next4Bytes();
     float result = float(u32 & uint32_t(0x007FFFFF)) * std::pow(2.0f, -23.f); // this is faster than std::ldexpf(u32, -23), thats so wierd
     assert(result < 1.0f);
     return result;
   }
 
-  Vec2f uniform01Vec2f()
-  {
-    return Vec2f(uniform01f(), uniform01f());
-  }
-
-  Vec3f uniform01Vec3f()
-  {
-    return Vec3f(uniform01f(), uniform01f(), uniform01f());
-  }
-
-  float uniformm11f()
+  inline float uniformm11f()
   {
     return 2.0f * uniform01f() - 1.0f;
   }
 
-  result_type min() const
+  inline result_type min() const
   {
     return std::numeric_limits<uint32_t>::min();
   }
-  result_type max() const
+  inline result_type max() const
   {
     return std::numeric_limits<uint32_t>::max();
   }
 
-  result_type operator()()
+  inline result_type operator()()
   {
-    uint32_t u32 = get4bytes();
+    uint32_t u32 = state.next4Bytes();
     return u32;
+  }
+  inline uint32_t next4Bytes()
+  {
+    return state.next4Bytes();
   }
 
 private:
   CopyablePrng_state state;
-  std::array<uint32_t, bufferSize> buf = { 0 };
-  uint32_t offset;
 };
 
-}
-#endif // #ifndef use_shishua
-
-namespace Hasty
-{
 
 inline float uniform01f(RNG& rng)
 {
